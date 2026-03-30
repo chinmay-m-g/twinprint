@@ -18,6 +18,7 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintManager
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
@@ -32,7 +33,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.util.*
 
 class MainActivity : AppCompatActivity() {
@@ -63,14 +63,15 @@ class MainActivity : AppCompatActivity() {
     private var totalPages: Int = 0
     private lateinit var sharedPrefs: SharedPreferences
     private var pdfRenderer: PdfRenderer? = null
-    private var parcelFileDescriptor: ParcelFileDescriptor? = null
-
+    
     private val STORAGE_PERMISSION_CODE = 101
     private val PICK_PDF_CODE = 102
 
-    // Zoom state
+    // Zoom and Pan state
     private var scaleFactor = 1.0f
     private lateinit var scaleDetector: ScaleGestureDetector
+    private var lastRawX = 0f
+    private var activePointerId = -1
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,21 +103,73 @@ class MainActivity : AppCompatActivity() {
         rvEditPages.layoutManager = GridLayoutManager(this, 2)
 
         // Zoom Implementation
+        rvPdfPages.pivotX = 0f
+        rvPdfPages.pivotY = 0f
+        
         scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val prevScale = scaleFactor
                 scaleFactor *= detector.scaleFactor
                 scaleFactor = scaleFactor.coerceIn(1.0f, 5.0f)
-                rvPdfPages.scaleX = scaleFactor
-                rvPdfPages.scaleY = scaleFactor
-                rvPdfPages.pivotX = detector.focusX
-                rvPdfPages.pivotY = detector.focusY
+
+                if (prevScale != scaleFactor) {
+                    rvPdfPages.scaleX = scaleFactor
+                    rvPdfPages.scaleY = scaleFactor
+
+                    // Smooth horizontal panning adjustment
+                    val focusX = detector.focusX
+                    val dx = (focusX - rvPdfPages.translationX) * (scaleFactor / prevScale - 1)
+                    rvPdfPages.translationX -= dx
+                    
+                    // Clamp translationX to bounds
+                    val minTransX = -(rvPdfPages.width * scaleFactor - rvPdfPages.width)
+                    rvPdfPages.translationX = rvPdfPages.translationX.coerceIn(minTransX, 0f)
+
+                    // Vertical scroll adjustment to keep zoom centered
+                    val focusY = detector.focusY
+                    val dy = (focusY * (scaleFactor / prevScale - 1)).toInt()
+                    rvPdfPages.scrollBy(0, dy)
+                }
                 return true
             }
         })
 
         rvPdfPages.setOnTouchListener { v, event ->
             scaleDetector.onTouchEvent(event)
-            v.performClick()
+            
+            val action = event.actionMasked
+            when (action) {
+                MotionEvent.ACTION_DOWN -> {
+                    activePointerId = event.getPointerId(0)
+                    lastRawX = event.rawX
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val pointerIndex = event.findPointerIndex(activePointerId)
+                    if (pointerIndex != -1) {
+                        val currentRawX = event.rawX
+                        if (scaleFactor > 1.0f && !scaleDetector.isInProgress) {
+                            val dx = currentRawX - lastRawX
+                            var newTransX = v.translationX + dx
+                            
+                            // Clamp translationX to bounds
+                            val minTransX = -(v.width * scaleFactor - v.width)
+                            v.translationX = newTransX.coerceIn(minTransX, 0f)
+                        }
+                        lastRawX = currentRawX
+                    }
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    val pointerIndex = event.actionIndex
+                    val pointerId = event.getPointerId(pointerIndex)
+                    if (pointerId == activePointerId) {
+                        val newPointerIndex = if (pointerIndex == 0) 1 else 0
+                        lastRawX = event.rawX
+                        activePointerId = event.getPointerId(newPointerIndex)
+                    }
+                }
+            }
+            
+            if (action == MotionEvent.ACTION_UP) v.performClick()
             false
         }
 
@@ -194,7 +247,6 @@ class MainActivity : AppCompatActivity() {
         })
 
         checkPermissions()
-        handleIntent(intent)
     }
 
     private fun goHome() {
@@ -204,20 +256,13 @@ class MainActivity : AppCompatActivity() {
         viewDuplex.visibility = View.GONE
         tvToolbarTitle.text = "TwinPrint PDF Studio"
         
-        // Reset zoom
+        // Reset zoom and pan
         scaleFactor = 1.0f
         rvPdfPages.scaleX = 1.0f
         rvPdfPages.scaleY = 1.0f
+        rvPdfPages.translationX = 0f
         
         updateRecentFilesList()
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        val action = intent?.action
-        if ((Intent.ACTION_SEND == action || Intent.ACTION_VIEW == action) && intent.type == "application/pdf") {
-            val uri = if (Intent.ACTION_SEND == action) intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) else intent.data
-            uri?.let { processSelectedUris(listOf(it)) }
-        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -242,7 +287,7 @@ class MainActivity : AppCompatActivity() {
                 .setTitle("Multiple PDFs Selected")
                 .setMessage("Do you want to merge these PDFs into one?")
                 .setPositiveButton("MERGE") { _, _ -> startMergeWorkflow(uris) }
-                .setNegativeButton("KEEP SEPARATE") { _, _ -> loadPdf(uris[0]) } // Load first one for now
+                .setNegativeButton("KEEP SEPARATE") { _, _ -> loadPdf(uris[0]) }
                 .show()
         } else if (uris.isNotEmpty()) {
             loadPdf(uris[0])
@@ -274,7 +319,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Select at least one page", Toast.LENGTH_SHORT).show()
             return
         }
-        // Logic to treat 'filtered' as the current document
         totalPages = filtered.size
         rvPdfPages.adapter = MergedPdfAdapter(filtered)
         
@@ -292,7 +336,6 @@ class MainActivity : AppCompatActivity() {
                 pdfRenderer = PdfRenderer(pfd)
                 totalPages = pdfRenderer!!.pageCount
                 
-                // Convert single PDF to mergedPages format for unified printing logic
                 mergedPages.clear()
                 for (i in 0 until totalPages) mergedPages.add(PageItem(uri, i))
                 
@@ -380,7 +423,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ADAPTERS
     private inner class PdfPagesAdapter(private val renderer: PdfRenderer) : RecyclerView.Adapter<PdfPagesAdapter.PageViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = PageViewHolder(ImageView(parent.context).apply {
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -428,11 +470,8 @@ class MainActivity : AppCompatActivity() {
             holder.tvInfo.text = "Page ${position + 1}"
             holder.cbSelect.isChecked = item.isSelected
             holder.cbSelect.setOnCheckedChangeListener { _, isChecked -> item.isSelected = isChecked }
-            
             holder.btnUp.setOnClickListener { if (position > 0) { Collections.swap(items, position, position - 1); notifyItemRangeChanged(position - 1, 2) } }
             holder.btnDown.setOnClickListener { if (position < items.size - 1) { Collections.swap(items, position, position + 1); notifyItemRangeChanged(position, 2) } }
-
-            // Load thumbnail
             try {
                 val pfd = contentResolver.openFileDescriptor(item.uri, "r")!!
                 val renderer = PdfRenderer(pfd)
