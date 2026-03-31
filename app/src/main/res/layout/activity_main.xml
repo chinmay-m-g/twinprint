@@ -3,9 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5"
-    android:clipChildren="false"
-    android:clipToPadding="false">
+    android:background="#F5F5F5">
 
     <!-- Header Toolbar -->
     <androidx.appcompat.widget.Toolbar
@@ -39,6 +37,18 @@
         android:visibility="visible">
 
         <TextView
+            android:id="@+id/tvWelcome"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:gravity="center"
+            android:padding="32dp"
+            android:text="Welcome to TwinPrint!\n\nOpen a PDF to get started."
+            android:textColor="#9E9E9E"
+            android:textSize="20sp"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/tvRecentLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -51,8 +61,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_above="@id/btnOpenPdf"
-            android:layout_below="@id/tvRecentLabel"
-            android:clipToPadding="false">
+            android:layout_below="@id/tvRecentLabel">
 
             <LinearLayout
                 android:id="@+id/llRecentItems"
@@ -81,30 +90,25 @@
         android:layout_height="match_parent"
         android:layout_below="@id/toolbar"
         android:orientation="vertical"
-        android:visibility="gone"
-        android:clipChildren="false"
-        android:clipToPadding="false">
+        android:visibility="gone">
 
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipChildren="false"
-            android:clipToPadding="false">
+            android:layout_weight="1">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvPdfPages"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:padding="8dp"
-                android:clipToPadding="false"
-                android:scrollbars="vertical" />
+                android:scrollbars="vertical"
+                android:background="#808080" />
 
             <TextView
                 android:id="@+id/tvPageIndicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="top|end"
+                android:layout_gravity="bottom|center_horizontal"
                 android:layout_margin="16dp"
                 android:background="#AA000000"
                 android:padding="8dp"
@@ -217,17 +221,42 @@
         android:layout_below="@id/toolbar"
         android:background="#FFFFFF"
         android:orientation="vertical"
-        android:padding="24dp"
+        android:padding="16dp"
         android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvDuplexInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:gravity="center"
+            android:text="Double Sided Printing"
+            android:textColor="#2196F3"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginBottom="16dp">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvDuplexPreview"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#F0F0F0" />
+        </FrameLayout>
+
         <LinearLayout
             android:id="@+id/layoutTimer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="32dp"
+            android:layout_marginBottom="16dp"
             android:background="#E3F2FD"
             android:gravity="center"
             android:orientation="vertical"
-            android:padding="20dp"
+            android:padding="12dp"
             android:visibility="gone">
             <TextView
                 android:layout_width="wrap_content"
@@ -243,27 +272,91 @@
                 android:max="10"
                 android:progress="10" />
         </LinearLayout>
-        <Button
-            android:id="@+id/btnStep1Even"
+
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="80dp"
-            android:layout_marginBottom="24dp"
-            android:backgroundTint="#FF9800"
-            android:text="STEP 1: Even Pages" />
-        <Button
-            android:id="@+id/btnStep2Odd"
-            android:layout_width="match_parent"
-            android:layout_height="80dp"
-            android:backgroundTint="#4CAF50"
-            android:enabled="false"
-            android:text="STEP 2: Odd Pages" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/btnStep1Even"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:backgroundTint="#FF9800"
+                android:text="STEP 1: Evens"
+                android:textSize="12sp" />
+            <Button
+                android:id="@+id/btnStep2Odd"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:backgroundTint="#4CAF50"
+                android:enabled="false"
+                android:text="STEP 2: Odds"
+                android:textSize="12sp" />
+        </LinearLayout>
+
         <Button
             android:id="@+id/btnBackFromDuplex"
             style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
+            android:layout_marginTop="8dp"
             android:text="Exit Printing" />
     </LinearLayout>
+
+    <!-- 6. AD OVERLAY -->
+    <RelativeLayout
+        android:id="@+id/viewAd"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FFFFFF"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+        <TextView
+            android:id="@+id/tvAdLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="32dp"
+            android:text="ADVERTISEMENT"
+            android:textColor="#CCCCCC"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tvPrintingStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/tvAdLabel"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="16dp"
+            android:text="Printing in progress... Please wait."
+            android:textColor="#2196F3"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_below="@id/tvPrintingStatus"
+            android:layout_above="@id/tvAdTimer"
+            android:layout_margin="32dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_launcher_background" />
+        <TextView
+            android:id="@+id/tvAdTimer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="32dp"
+            android:text="Closing in 30s..."
+            android:textColor="#2196F3"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
 
 </RelativeLayout>
