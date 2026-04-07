@@ -245,9 +245,11 @@ class MainActivity : AppCompatActivity() {
                 processNextInBatch()
             } else if (totalPages > 0) {
                 val pageList = (1..totalPages).toList()
-                doPrintMerged(getFileName(currentPdfUri) ?: "Document", pageList) {
-                    showAdForPages(pageList.size) {
-                        goHome()
+                doPrintMerged(getFileName(currentPdfUri) ?: "Document", pageList) { success ->
+                    if (success) {
+                        showAdForPages(pageList.size) {
+                            goHome()
+                        }
                     }
                 }
             }
@@ -278,9 +280,13 @@ class MainActivity : AppCompatActivity() {
                     evens.add(0)
                 }
                 
-                doPrintMerged("Even Pages - ${getFileName(currentPdfUri) ?: "Document"}", evens) {
-                    showAdForPages(evens.size) {
-                        startFlipTimer()
+                doPrintMerged("Even Pages - ${getFileName(currentPdfUri) ?: "Document"}", evens) { success ->
+                    if (success) {
+                        showAdForPages(evens.size) {
+                            startFlipTimer()
+                        }
+                    } else {
+                        btnStep1Even.isEnabled = true
                     }
                 }
             } else {
@@ -292,15 +298,19 @@ class MainActivity : AppCompatActivity() {
             if (totalPages > 0) {
                 btnStep2Odd.isEnabled = false
                 val odds = (1..totalPages step 2).toList()
-                doPrintMerged("Odd Pages - ${getFileName(currentPdfUri) ?: "Document"}", odds) {
-                    showAdForPages(odds.size) {
-                        if (isBatchSeparate) {
-                            currentBatchIndex++
-                            processNextInBatch()
-                        } else {
-                            Toast.makeText(this, "Printing complete", Toast.LENGTH_SHORT).show()
-                            goHome()
+                doPrintMerged("Odd Pages - ${getFileName(currentPdfUri) ?: "Document"}", odds) { success ->
+                    if (success) {
+                        showAdForPages(odds.size) {
+                            if (isBatchSeparate) {
+                                currentBatchIndex++
+                                processNextInBatch()
+                            } else {
+                                Toast.makeText(this, "Printing complete", Toast.LENGTH_SHORT).show()
+                                goHome()
+                            }
                         }
+                    } else {
+                        btnStep2Odd.isEnabled = true
                     }
                 }
             }
@@ -537,10 +547,12 @@ class MainActivity : AppCompatActivity() {
                     setupDuplexUI()
                 } else {
                     val pageList = (1..totalPages).toList()
-                    doPrintMerged(getFileName(uri) ?: "Document", pageList) {
-                        showAdForPages(pageList.size) {
-                            currentBatchIndex++
-                            processNextInBatch()
+                    doPrintMerged(getFileName(uri) ?: "Document", pageList) { success ->
+                        if (success) {
+                            showAdForPages(pageList.size) {
+                                currentBatchIndex++
+                                processNextInBatch()
+                            }
                         }
                     }
                 }
@@ -653,10 +665,14 @@ class MainActivity : AppCompatActivity() {
         rvPdfPages.translationY = 0f
     }
 
-    private fun doPrintMerged(jobName: String, pageNumbers: List<Int>, onComplete: (() -> Unit)? = null) {
+    private fun doPrintMerged(jobName: String, pageNumbers: List<Int>, onComplete: ((Boolean) -> Unit)? = null) {
         val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
         val pagesToPrint = ArrayList(mergedPages)
+        var printJob: android.print.PrintJob? = null
+
         val adapter = object : PrintDocumentAdapter() {
+            var wroteContent = false
+
             override fun onLayout(oldAttributes: PrintAttributes?, newAttributes: PrintAttributes?, cancellationSignal: android.os.CancellationSignal?, callback: LayoutResultCallback?, extras: Bundle?) {
                 if (cancellationSignal?.isCanceled == true) {
                     callback?.onLayoutCancelled()
@@ -700,6 +716,7 @@ class MainActivity : AppCompatActivity() {
                     FileOutputStream(destination?.fileDescriptor).use { outputStream ->
                         outDoc.save(outputStream)
                     }
+                    wroteContent = true
                     callback?.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES))
                 } catch (e: Exception) {
                     callback?.onWriteFailed(e.message)
@@ -713,10 +730,24 @@ class MainActivity : AppCompatActivity() {
 
             override fun onFinish() {
                 super.onFinish()
-                runOnUiThread { onComplete?.invoke() }
+                val job = printJob
+                // The print dialog is finished. We check if the job was actually started.
+                // We use a small delay because the job state might not be updated immediately.
+                window.decorView.postDelayed({
+                    val state = job?.info?.state ?: 0
+                    // Consider it a success if the job is queued, started, blocked or completed.
+                    // If it is 'created', it means the dialog was likely dismissed without starting the print.
+                    val success = wroteContent && (
+                        state == android.print.PrintJobInfo.STATE_QUEUED ||
+                        state == android.print.PrintJobInfo.STATE_STARTED ||
+                        state == android.print.PrintJobInfo.STATE_COMPLETED ||
+                        state == android.print.PrintJobInfo.STATE_BLOCKED
+                    )
+                    runOnUiThread { onComplete?.invoke(success) }
+                }, 1000)
             }
         }
-        printManager.print(jobName, adapter, null)
+        printJob = printManager.print(jobName, adapter, null)
     }
 
     private fun addToRecentFiles(uri: Uri) {
