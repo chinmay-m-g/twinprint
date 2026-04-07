@@ -35,8 +35,10 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import java.io.File
 import java.io.FileOutputStream
 import java.util.*
 import kotlin.math.abs
@@ -263,16 +265,26 @@ class MainActivity : AppCompatActivity() {
 
         // Duplex Actions
         btnStep1Even.setOnClickListener {
-            if (totalPages >= 2) {
+            if (totalPages > 0) {
                 btnStep1Even.isEnabled = false
-                val evens = (2..totalPages step 2).toList()
+                val evens = mutableListOf<Int>()
+                
+                for (i in 2..totalPages step 2) {
+                    evens.add(i)
+                }
+                
+                // If total pages is odd, append a blank page (0) at the end to ensure symmetric sheet count
+                if (totalPages % 2 != 0) {
+                    evens.add(0)
+                }
+                
                 doPrintMerged("Even Pages - ${getFileName(currentPdfUri) ?: "Document"}", evens) {
                     showAdForPages(evens.size) {
                         startFlipTimer()
                     }
                 }
             } else {
-                Toast.makeText(this, "Document has only one page", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "No pages to print", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -315,8 +327,75 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        handleIntent(intent)
         updateRecentFilesList()
         checkPermissions()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.action
+        val type = intent.type ?: ""
+        
+        // Use a more flexible check for PDF type and handle ACTION_VIEW / ACTION_SEND robustly
+        if (Intent.ACTION_VIEW == action) {
+            intent.data?.let { uri ->
+                processIncomingUri(uri)
+            }
+        } else if (Intent.ACTION_SEND == action && type.startsWith("application/pdf")) {
+            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            uri?.let { processIncomingUri(it) }
+        }
+    }
+
+    private fun processIncomingUri(uri: Uri) {
+        try {
+            // Ensure we have access to the URI if possible
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) {}
+
+            val cachedUri = copyToCache(uri)
+            if (cachedUri != null) {
+                openPdf(cachedUri)
+            } else {
+                openPdf(uri)
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to process incoming PDF: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun copyToCache(uri: Uri): Uri? {
+        return try {
+            val originalName = getFileName(uri) ?: "document.pdf"
+            // Use a hash of the URI to ensure a unique filename for each document in cache
+            val uniqueName = "${uri.toString().hashCode()}_$originalName"
+            val cacheFile = File(cacheDir, uniqueName)
+            
+            // If already cached, just return it
+            if (cacheFile.exists()) return Uri.fromFile(cacheFile)
+
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(cacheFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            Uri.fromFile(cacheFile)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun clampTranslation() {
@@ -347,16 +426,9 @@ class MainActivity : AppCompatActivity() {
         // Setup Preview
         rvDuplexPreview.adapter = DuplexPreviewAdapter(mergedPages)
         
-        if (totalPages == 1) {
-            duplexInfo.text = "Double Sided Printing (Single Page)"
-            btnStep1Even.isEnabled = false
-            btnStep2Odd.isEnabled = true
-            Toast.makeText(this, "This document has only one page. Print as Odd page.", Toast.LENGTH_LONG).show()
-        } else {
-            duplexInfo.text = "Double Sided Printing"
-            btnStep1Even.isEnabled = true
-            btnStep2Odd.isEnabled = false
-        }
+        duplexInfo.text = "Double Sided Printing"
+        btnStep1Even.isEnabled = true
+        btnStep2Odd.isEnabled = false
     }
 
     private fun showAdForPages(numPages: Int, onFinish: () -> Unit) {
@@ -606,6 +678,13 @@ class MainActivity : AppCompatActivity() {
                             callback?.onWriteCancelled()
                             return
                         }
+                        
+                        if (pNum == 0) {
+                            // Add a blank page if indicator is 0
+                            outDoc.addPage(PDPage())
+                            continue
+                        }
+
                         val item = pagesToPrint[pNum - 1]
                         val sourceDoc = openedDocs.getOrPut(item.uri) {
                             val inputStream = contentResolver.openInputStream(item.uri)
@@ -723,16 +802,21 @@ class MainActivity : AppCompatActivity() {
         if (uri == null) return null
         var result: String? = null
         if (uri.scheme == "content") {
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) result = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME))
-            }
+            try {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (index != -1) result = cursor.getString(index)
+                    }
+                }
+            } catch (e: Exception) {}
         }
         if (result == null) {
             result = uri.path
             val cut = result?.lastIndexOf('/') ?: -1
             if (cut != -1) result = result?.substring(cut + 1)
         }
-        return result
+        return result ?: "document.pdf"
     }
 
     private fun checkPermissions() {
