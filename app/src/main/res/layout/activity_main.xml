@@ -148,7 +148,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 3. MERGE / REORDER / SELECT PAGES UI -->
+    <!-- 3. MANAGE PAGES UI (Reorder & Save Images) -->
     <LinearLayout
         android:id="@+id/viewManageMerge"
         android:layout_width="match_parent"
@@ -162,37 +162,56 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="16dp"
-            android:text="Merge &amp; Edit Pages"
+            android:text="Manage Pages (Drag to Reorder)"
             android:textStyle="bold"
-            android:textSize="18sp"/>
+            android:textSize="18sp"
+            android:textColor="#000000"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvEditPages"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:background="#FFFFFF"
             android:padding="8dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="16dp">
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:background="#FFFFFF">
+
             <Button
-                android:id="@+id/btnDiscardMerge"
-                android:layout_width="0dp"
+                android:id="@+id/btnSaveImages"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="CANCEL"
-                android:backgroundTint="#9E9E9E"
-                android:layout_marginEnd="8dp"/>
-            <Button
-                android:id="@+id/btnConfirmMerge"
-                android:layout_width="0dp"
+                android:layout_marginBottom="8dp"
+                android:text="SAVE IMAGES TO PHONE"
+                android:backgroundTint="#4CAF50"
+                android:textColor="#FFFFFF"
+                android:visibility="gone"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="MERGE &amp; VIEW"
-                android:backgroundTint="#2196F3"/>
+                android:orientation="horizontal">
+                <Button
+                    android:id="@+id/btnDiscardMerge"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="CANCEL"
+                    android:backgroundTint="#9E9E9E"
+                    android:layout_marginEnd="8dp"/>
+                <Button
+                    android:id="@+id/btnConfirmMerge"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="CONVERT TO PDF"
+                    android:backgroundTint="#2196F3"/>
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 

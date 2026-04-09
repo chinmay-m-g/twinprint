@@ -2,6 +2,7 @@ package com.print.twinprint
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -35,6 +36,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
@@ -53,7 +55,7 @@ import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
 
-    data class PageItem(val uri: Uri, val originalPageIndex: Int, var isSelected: Boolean = true, var password: String? = null, var isEncrypted: Boolean = false)
+    data class PageItem(val uri: Uri, val originalPageIndex: Int, var isSelected: Boolean = true, var password: String? = null, var isEncrypted: Boolean = false, var isFromImage: Boolean = false)
 
     // Views
     private lateinit var viewHome: View
@@ -80,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pbTimer: ProgressBar
     private lateinit var btnStep1Even: Button
     private lateinit var btnStep2Odd: Button
+    private lateinit var btnSaveImages: Button
 
     private var currentPdfUri: Uri? = null
     private var mergedPages = mutableListOf<PageItem>()
@@ -94,18 +97,23 @@ class MainActivity : AppCompatActivity() {
 
     private var cameraImageUri: Uri? = null
 
+    // Zoom and Grid state
+    private var viewerSpanCount = 1
+    private var editSpanCount = 1
+    private lateinit var viewerScaleDetector: ScaleGestureDetector
+    private lateinit var editScaleDetector: ScaleGestureDetector
+
+    // Traditional Zoom state (for single page mode)
+    private var scaleFactor = 1.0f
+    private var lastRawX = 0f
+    private var lastRawY = 0f
+    private var activePointerId = -1
+
     // Batch Print state
     private var batchUris = mutableListOf<Uri>()
     private var currentBatchIndex = 0
     private var isBatchSeparate = false
     private var batchIsDoubleSided = false
-
-    // Zoom and Pan state
-    private var scaleFactor = 1.0f
-    private lateinit var scaleDetector: ScaleGestureDetector
-    private var lastRawX = 0f
-    private var lastRawY = 0f
-    private var activePointerId = -1
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,83 +150,67 @@ class MainActivity : AppCompatActivity() {
         pbTimer = findViewById(R.id.pbTimer)
         btnStep1Even = findViewById(R.id.btnStep1Even)
         btnStep2Odd = findViewById(R.id.btnStep2Odd)
+        btnSaveImages = findViewById(R.id.btnSaveImages)
 
-        rvPdfPages.layoutManager = LinearLayoutManager(this)
-        rvEditPages.layoutManager = GridLayoutManager(this, 2)
+        rvPdfPages.layoutManager = GridLayoutManager(this, 1)
+        rvEditPages.layoutManager = GridLayoutManager(this, 1)
         rvDuplexPreview.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
-        // Zoom Implementation
-        scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        // Setup Drag and Drop for both
+        setupDragAndDrop(rvPdfPages)
+        setupDragAndDrop(rvEditPages)
+
+        // Zoom & Grid Gesture for Viewer
+        viewerScaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                val prevScale = scaleFactor
-                scaleFactor *= detector.scaleFactor
-                scaleFactor = scaleFactor.coerceIn(1.0f, 5.0f)
-
-                if (prevScale != scaleFactor) {
-                    rvPdfPages.scaleX = scaleFactor
-                    rvPdfPages.scaleY = scaleFactor
-
-                    val focusX = detector.focusX
-                    val focusY = detector.focusY
-                    
-                    val dx = (focusX - rvPdfPages.translationX) * (scaleFactor / prevScale - 1)
-                    val dy = (focusY - rvPdfPages.translationY) * (scaleFactor / prevScale - 1)
-                    
-                    rvPdfPages.translationX -= dx
-                    rvPdfPages.translationY -= dy
-                    
-                    clampTranslation()
+                val scale = detector.scaleFactor
+                if (scale < 0.85f) { // Pinch In -> Zoom Out (More columns)
+                    if (viewerSpanCount < 8) {
+                        viewerSpanCount++
+                        updateSpanCount(rvPdfPages, viewerSpanCount)
+                        return true
+                    }
+                } else if (scale > 1.15f) { // Pinch Out -> Zoom In (Fewer columns)
+                    if (viewerSpanCount > 1) {
+                        viewerSpanCount--
+                        updateSpanCount(rvPdfPages, viewerSpanCount)
+                        return true
+                    }
                 }
-                return true
+                return false
+            }
+        })
+
+        // Zoom & Grid Gesture for Edit Pages
+        editScaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val scale = detector.scaleFactor
+                if (scale < 0.85f) { // Pinch In -> Icons
+                    if (editSpanCount < 8) {
+                        editSpanCount++
+                        updateSpanCount(rvEditPages, editSpanCount)
+                        return true
+                    }
+                } else if (scale > 1.15f) { // Pinch Out -> Bigger
+                    if (editSpanCount > 1) {
+                        editSpanCount--
+                        updateSpanCount(rvEditPages, editSpanCount)
+                        return true
+                    }
+                }
+                return false
             }
         })
 
         rvPdfPages.setOnTouchListener { v, event ->
-            scaleDetector.onTouchEvent(event)
-            
-            val action = event.actionMasked
-            when (action) {
-                MotionEvent.ACTION_DOWN -> {
-                    activePointerId = event.getPointerId(0)
-                    lastRawX = event.rawX
-                    lastRawY = event.rawY
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val pointerIndex = event.findPointerIndex(activePointerId)
-                    if (pointerIndex != -1) {
-                        val currentRawX = event.rawX
-                        val currentRawY = event.rawY
-                        
-                        if (scaleFactor > 1.0f && !scaleDetector.isInProgress) {
-                            val dx = currentRawX - lastRawX
-                            val dy = currentRawY - lastRawY
-                            
-                            rvPdfPages.translationX += dx
-                            rvPdfPages.translationY += dy
-                            
-                            clampTranslation()
-                            
-                            lastRawX = currentRawX
-                            lastRawY = currentRawY
-                            return@setOnTouchListener true
-                        }
-                        lastRawX = currentRawX
-                        lastRawY = currentRawY
-                    }
-                }
-                MotionEvent.ACTION_POINTER_UP -> {
-                    val pointerIndex = event.actionIndex
-                    val pointerId = event.getPointerId(pointerIndex)
-                    if (pointerId == activePointerId) {
-                        val newPointerIndex = if (pointerIndex == 0) 1 else 0
-                        lastRawX = event.getX(newPointerIndex)
-                        lastRawY = event.getY(newPointerIndex)
-                        activePointerId = event.getPointerId(newPointerIndex)
-                    }
-                }
-            }
-            
-            if (action == MotionEvent.ACTION_UP) v.performClick()
+            viewerScaleDetector.onTouchEvent(event)
+            if (event.action == MotionEvent.ACTION_UP) v.performClick()
+            false
+        }
+
+        rvEditPages.setOnTouchListener { v, event ->
+            editScaleDetector.onTouchEvent(event)
+            if (event.action == MotionEvent.ACTION_UP) v.performClick()
             false
         }
 
@@ -321,7 +313,7 @@ class MainActivity : AppCompatActivity() {
                     evens.add(i)
                 }
                 
-                // If total pages is_odd, append a blank page (0) at the end to ensure symmetric sheet count
+                // If total pages is odd, append a blank page (0) at the end to ensure symmetric sheet count
                 if (totalPages % 2 != 0) {
                     evens.add(0)
                 }
@@ -372,6 +364,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnConfirmMerge).setOnClickListener {
             finalizeMerge()
         }
+        btnSaveImages.setOnClickListener {
+            saveSelectedImagesToGallery()
+        }
 
         // Setup Page Scroll Listener
         rvPdfPages.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -386,6 +381,49 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
         updateRecentFilesList()
         checkPermissions()
+    }
+
+    private fun setupDragAndDrop(rv: RecyclerView) {
+        val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT, 0) {
+            
+            override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
+                val fromPos = viewHolder.adapterPosition
+                val toPos = target.adapterPosition
+                Collections.swap(mergedPages, fromPos, toPos)
+                recyclerView.adapter?.notifyItemMoved(fromPos, toPos)
+                return true
+            }
+
+            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                super.onSelectedChanged(viewHolder, actionState)
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    viewHolder?.itemView?.apply {
+                        alpha = 0.7f
+                        scaleX = 1.05f
+                        scaleY = 1.05f
+                    }
+                }
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                viewHolder.itemView.apply {
+                    alpha = 1.0f
+                    scaleX = 1.0f
+                    scaleY = 1.0f
+                }
+                recyclerView.adapter?.notifyDataSetChanged()
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+        })
+        itemTouchHelper.attachToRecyclerView(rv)
+    }
+
+    private fun updateSpanCount(rv: RecyclerView, count: Int) {
+        (rv.layoutManager as? GridLayoutManager)?.spanCount = count
+        rv.adapter?.notifyDataSetChanged()
     }
 
     private fun openCamera() {
@@ -484,6 +522,13 @@ class MainActivity : AppCompatActivity() {
         viewAd.visibility = View.GONE
         tvToolbarTitle.text = "TwinPrint PDF Studio"
         updateRecentFilesList()
+        
+        // Reset span counts
+        viewerSpanCount = 1
+        editSpanCount = 1
+        updateSpanCount(rvPdfPages, 1)
+        updateSpanCount(rvEditPages, 1)
+        
         // Ensure keep screen on flag is cleared
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
@@ -590,17 +635,71 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         if (uris.isNotEmpty()) {
-                            convertImagesToPdf(uris)
+                            startImageManageProcess(uris)
                         }
                     }
                 }
                 CAPTURE_IMAGE_CODE -> {
                     cameraImageUri?.let { uri ->
-                        convertImagesToPdf(listOf(uri))
+                        startImageManageProcess(listOf(uri))
                     }
                 }
             }
         }
+    }
+
+    private fun startImageManageProcess(uris: List<Uri>) {
+        mergedPages.clear()
+        uris.forEach { uri ->
+            mergedPages.add(PageItem(uri, 0, true, isFromImage = true))
+        }
+        viewHome.visibility = View.GONE
+        viewManageMerge.visibility = View.VISIBLE
+        btnSaveImages.visibility = View.VISIBLE
+        editSpanCount = 1
+        updateSpanCount(rvEditPages, 1)
+        rvEditPages.adapter = PageEditAdapter(mergedPages)
+    }
+
+    private fun saveSelectedImagesToGallery() {
+        val selected = mergedPages.filter { it.isSelected && it.isFromImage }
+        if (selected.isEmpty()) {
+            Toast.makeText(this, "No images selected to save", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        var savedCount = 0
+        selected.forEach { item ->
+            try {
+                contentResolver.openInputStream(item.uri)?.use { input ->
+                    val bitmap = BitmapFactory.decodeStream(input)
+                    val filename = "TwinPrint_${System.currentTimeMillis()}.jpg"
+                    
+                    val values = ContentValues().apply {
+                        put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/TwinPrint")
+                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+                    }
+                    
+                    val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    uri?.let { 
+                        contentResolver.openOutputStream(it)?.use { output ->
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            values.clear()
+                            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                            contentResolver.update(it, values, null, null)
+                        }
+                        savedCount++
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+        Toast.makeText(this, "Saved $savedCount images to gallery", Toast.LENGTH_SHORT).show()
     }
 
     private fun convertImagesToPdf(uris: List<Uri>) {
@@ -768,6 +867,9 @@ class MainActivity : AppCompatActivity() {
         }
         viewHome.visibility = View.GONE
         viewManageMerge.visibility = View.VISIBLE
+        btnSaveImages.visibility = View.GONE
+        editSpanCount = 1
+        updateSpanCount(rvEditPages, 1)
         rvEditPages.adapter = PageEditAdapter(mergedPages)
     }
 
@@ -777,11 +879,18 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "No pages selected", Toast.LENGTH_SHORT).show()
             return
         }
-        mergedPages.clear()
-        mergedPages.addAll(selected)
-        totalPages = mergedPages.size
-        viewManageMerge.visibility = View.GONE
-        displayPdf()
+        
+        // If they are images, convert them to PDF first
+        val imageUris = selected.filter { it.isFromImage }.map { it.uri }
+        if (imageUris.isNotEmpty()) {
+            convertImagesToPdf(imageUris)
+        } else {
+            mergedPages.clear()
+            mergedPages.addAll(selected)
+            totalPages = mergedPages.size
+            viewManageMerge.visibility = View.GONE
+            displayPdf()
+        }
     }
 
     private fun displayPdf() {
@@ -789,14 +898,10 @@ class MainActivity : AppCompatActivity() {
         viewViewer.visibility = View.VISIBLE
         tvToolbarTitle.text = getFileName(currentPdfUri) ?: "PDF Viewer"
         tvPageIndicator.text = "1 / $totalPages"
-        rvPdfPages.adapter = PdfPageAdapter(mergedPages)
         
-        // Reset Zoom
-        scaleFactor = 1.0f
-        rvPdfPages.scaleX = 1.0f
-        rvPdfPages.scaleY = 1.0f
-        rvPdfPages.translationX = 0f
-        rvPdfPages.translationY = 0f
+        viewerSpanCount = 1
+        updateSpanCount(rvPdfPages, 1)
+        rvPdfPages.adapter = PdfPageAdapter(mergedPages)
     }
 
     private fun doPrintMerged(jobName: String, pageNumbers: List<Int>, onComplete: ((Boolean) -> Unit)? = null) {
@@ -1003,6 +1108,7 @@ class MainActivity : AppCompatActivity() {
     inner class PdfPageAdapter(private val pages: List<PageItem>) : RecyclerView.Adapter<PdfPageAdapter.ViewHolder>() {
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
             val iv: ImageView = v.findViewById(R.id.ivPage)
+            val tv: TextView = v.findViewById(R.id.tvPageNum)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -1012,6 +1118,9 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = pages[position]
+            holder.tv.text = "Page ${position + 1}"
+            holder.tv.visibility = View.VISIBLE
+
             try {
                 val inputStream = contentResolver.openInputStream(item.uri) ?: return
                 val bytes = inputStream.readBytes()
@@ -1023,6 +1132,9 @@ class MainActivity : AppCompatActivity() {
                     val bitmap = renderer.renderImage(item.originalPageIndex, 1.5f)
                     holder.iv.setImageBitmap(bitmap)
                     doc.close()
+                } else if (item.isFromImage) {
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    holder.iv.setImageBitmap(bitmap)
                 } else {
                     val fd = contentResolver.openFileDescriptor(item.uri, "r") ?: return
                     val renderer = PdfRenderer(fd)
@@ -1070,6 +1182,10 @@ class MainActivity : AppCompatActivity() {
                     val bitmap = renderer.renderImage(item.originalPageIndex, 0.25f)
                     holder.iv.setImageBitmap(bitmap)
                     doc.close()
+                } else if (item.isFromImage) {
+                    val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                    holder.iv.setImageBitmap(bitmap)
                 } else {
                     val fd = contentResolver.openFileDescriptor(item.uri, "r") ?: return
                     val renderer = PdfRenderer(fd)
@@ -1118,6 +1234,9 @@ class MainActivity : AppCompatActivity() {
                     val bitmap = renderer.renderImage(item.originalPageIndex, 1.0f) // Higher quality for preview
                     holder.iv.setImageBitmap(bitmap)
                     doc.close()
+                } else if (item.isFromImage) {
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    holder.iv.setImageBitmap(bitmap)
                 } else {
                     val fd = contentResolver.openFileDescriptor(item.uri, "r") ?: return
                     val renderer = PdfRenderer(fd)
