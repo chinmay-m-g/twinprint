@@ -7,12 +7,15 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.os.Environment
 import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
@@ -30,6 +33,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -37,9 +41,13 @@ import com.google.android.material.card.MaterialCardView
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 
@@ -52,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewViewer: View
     private lateinit var viewManageMerge: View
     private lateinit var viewPrintOptions: View
+    private lateinit var viewCreateOptions: View
     private lateinit var viewDuplex: View
     private lateinit var viewAd: View
     
@@ -79,6 +88,11 @@ class MainActivity : AppCompatActivity() {
     
     private val STORAGE_PERMISSION_CODE = 101
     private val PICK_PDF_CODE = 102
+    private val PICK_IMAGES_CODE = 103
+    private val CAPTURE_IMAGE_CODE = 104
+    private val CAMERA_PERMISSION_CODE = 105
+
+    private var cameraImageUri: Uri? = null
 
     // Batch Print state
     private var batchUris = mutableListOf<Uri>()
@@ -108,6 +122,7 @@ class MainActivity : AppCompatActivity() {
         viewViewer = findViewById(R.id.viewViewer)
         viewManageMerge = findViewById(R.id.viewManageMerge)
         viewPrintOptions = findViewById(R.id.viewPrintOptions)
+        viewCreateOptions = findViewById(R.id.viewCreateOptions)
         viewDuplex = findViewById(R.id.viewDuplex)
         viewAd = findViewById(R.id.viewAd)
         
@@ -213,6 +228,8 @@ class MainActivity : AppCompatActivity() {
                 if (viewAd.visibility == View.VISIBLE) return // Block back during ad
                 if (viewPrintOptions.visibility == View.VISIBLE) {
                     viewPrintOptions.visibility = View.GONE
+                } else if (viewCreateOptions.visibility == View.VISIBLE) {
+                    viewCreateOptions.visibility = View.GONE
                 } else if (viewViewer.visibility == View.VISIBLE || viewManageMerge.visibility == View.VISIBLE || viewDuplex.visibility == View.VISIBLE) {
                     goHome()
                 } else {
@@ -232,6 +249,35 @@ class MainActivity : AppCompatActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivityForResult(intent, PICK_PDF_CODE)
+        }
+
+        findViewById<Button>(R.id.btnCreatePdf).setOnClickListener {
+            viewCreateOptions.visibility = View.VISIBLE
+        }
+
+        findViewById<Button>(R.id.btnOptGallery).setOnClickListener {
+            viewCreateOptions.visibility = View.GONE
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivityForResult(intent, PICK_IMAGES_CODE)
+        }
+
+        findViewById<Button>(R.id.btnOptCamera).setOnClickListener {
+            viewCreateOptions.visibility = View.GONE
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
+            } else {
+                openCamera()
+            }
+        }
+
+        findViewById<TextView>(R.id.tvCancelCreate).setOnClickListener {
+            viewCreateOptions.visibility = View.GONE
         }
 
         // Viewer Actions
@@ -275,7 +321,7 @@ class MainActivity : AppCompatActivity() {
                     evens.add(i)
                 }
                 
-                // If total pages is odd, append a blank page (0) at the end to ensure symmetric sheet count
+                // If total pages is_odd, append a blank page (0) at the end to ensure symmetric sheet count
                 if (totalPages % 2 != 0) {
                     evens.add(0)
                 }
@@ -340,6 +386,19 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
         updateRecentFilesList()
         checkPermissions()
+    }
+
+    private fun openCamera() {
+        try {
+            val photoFile = File.createTempFile("IMG_", ".jpg", getExternalFilesDir(Environment.DIRECTORY_PICTURES))
+            cameraImageUri = FileProvider.getUriForFile(this, "${packageName}.provider", photoFile)
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri)
+            }
+            startActivityForResult(intent, CAPTURE_IMAGE_CODE)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Camera Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -420,6 +479,7 @@ class MainActivity : AppCompatActivity() {
         viewViewer.visibility = View.GONE
         viewManageMerge.visibility = View.GONE
         viewPrintOptions.visibility = View.GONE
+        viewCreateOptions.visibility = View.GONE
         viewDuplex.visibility = View.GONE
         viewAd.visibility = View.GONE
         tvToolbarTitle.text = "TwinPrint PDF Studio"
@@ -492,23 +552,97 @@ class MainActivity : AppCompatActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PICK_PDF_CODE && resultCode == RESULT_OK && data != null) {
-            val clipData = data.clipData
-            if (clipData != null && clipData.itemCount > 1) {
-                // Batch/Merge mode
-                batchUris.clear()
-                for (i in 0 until clipData.itemCount) {
-                    val uri = clipData.getItemAt(i).uri
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    batchUris.add(uri)
+        if (resultCode == RESULT_OK) {
+            when (requestCode) {
+                PICK_PDF_CODE -> {
+                    if (data != null) {
+                        val clipData = data.clipData
+                        if (clipData != null && clipData.itemCount > 1) {
+                            // Batch/Merge mode
+                            batchUris.clear()
+                            for (i in 0 until clipData.itemCount) {
+                                val uri = clipData.getItemAt(i).uri
+                                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                batchUris.add(uri)
+                            }
+                            showBatchOptionsDialog()
+                        } else {
+                            val uri = data.data ?: return
+                            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            openPdf(uri)
+                        }
+                    }
                 }
-                showBatchOptionsDialog()
-            } else {
-                val uri = data.data ?: return
-                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                openPdf(uri)
+                PICK_IMAGES_CODE -> {
+                    if (data != null) {
+                        val uris = mutableListOf<Uri>()
+                        val clipData = data.clipData
+                        if (clipData != null) {
+                            for (i in 0 until clipData.itemCount) {
+                                val uri = clipData.getItemAt(i).uri
+                                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                uris.add(uri)
+                            }
+                        } else {
+                            data.data?.let { uri ->
+                                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                uris.add(uri)
+                            }
+                        }
+                        if (uris.isNotEmpty()) {
+                            convertImagesToPdf(uris)
+                        }
+                    }
+                }
+                CAPTURE_IMAGE_CODE -> {
+                    cameraImageUri?.let { uri ->
+                        convertImagesToPdf(listOf(uri))
+                    }
+                }
             }
         }
+    }
+
+    private fun convertImagesToPdf(uris: List<Uri>) {
+        val dialog = AlertDialog.Builder(this)
+            .setMessage("Converting images to PDF...")
+            .setCancelable(false)
+            .show()
+
+        Thread {
+            try {
+                val doc = PDDocument()
+                uris.forEach { uri ->
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        val bitmap = BitmapFactory.decodeStream(inputStream)
+                        val page = PDPage(PDRectangle(bitmap.width.toFloat(), bitmap.height.toFloat()))
+                        doc.addPage(page)
+                        val pdImage = LosslessFactory.createFromImage(doc, bitmap)
+                        PDPageContentStream(doc, page).use { contentStream ->
+                            contentStream.drawImage(pdImage, 0f, 0f)
+                        }
+                    }
+                }
+                
+                val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                val fileName = "Images_$timeStamp.pdf"
+                val file = File(cacheDir, fileName)
+                FileOutputStream(file).use { outputStream ->
+                    doc.save(outputStream)
+                }
+                doc.close()
+
+                runOnUiThread {
+                    dialog.dismiss()
+                    openPdf(Uri.fromFile(file))
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    dialog.dismiss()
+                    Toast.makeText(this, "Failed to convert images: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun showBatchOptionsDialog() {
@@ -855,6 +989,13 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), STORAGE_PERMISSION_CODE)
             }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CAMERA_PERMISSION_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            openCamera()
         }
     }
 

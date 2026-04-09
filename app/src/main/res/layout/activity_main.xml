@@ -43,7 +43,7 @@
             android:layout_centerInParent="true"
             android:gravity="center"
             android:padding="32dp"
-            android:text="Welcome to TwinPrint!\n\nOpen a PDF to get started."
+            android:text="Welcome to TwinPrint!\n\nOpen a PDF or create one from images."
             android:textColor="#9E9E9E"
             android:textSize="20sp"
             android:visibility="gone" />
@@ -60,7 +60,7 @@
         <ScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_above="@id/btnOpenPdf"
+            android:layout_above="@id/llBottomButtons"
             android:layout_below="@id/tvRecentLabel">
 
             <LinearLayout
@@ -71,16 +71,36 @@
                 android:padding="8dp" />
         </ScrollView>
 
-        <Button
-            android:id="@+id/btnOpenPdf"
+        <LinearLayout
+            android:id="@+id/llBottomButtons"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
+            android:layout_height="wrap_content"
             android:layout_alignParentBottom="true"
-            android:layout_margin="16dp"
-            android:backgroundTint="#2196F3"
-            android:text="OPEN PDF"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold"/>
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <Button
+                android:id="@+id/btnOpenPdf"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:layout_margin="8dp"
+                android:backgroundTint="#2196F3"
+                android:text="OPEN PDF"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"/>
+
+            <Button
+                android:id="@+id/btnCreatePdf"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:layout_margin="8dp"
+                android:backgroundTint="#4CAF50"
+                android:text="CREATE PDF"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"/>
+        </LinearLayout>
     </RelativeLayout>
 
     <!-- 2. PDF VIEWER PAGE -->
@@ -358,5 +378,42 @@
             android:textSize="18sp"
             android:textStyle="bold" />
     </RelativeLayout>
+
+    <!-- 7. CREATE PDF OPTIONS OVERLAY -->
+    <LinearLayout
+        android:id="@+id/viewCreateOptions"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/toolbar"
+        android:background="#CC000000"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+        <Button
+            android:id="@+id/btnOptGallery"
+            android:layout_width="match_parent"
+            android:layout_height="70dp"
+            android:layout_marginBottom="16dp"
+            android:backgroundTint="#FFFFFF"
+            android:text="Upload from Gallery"
+            android:textColor="#4CAF50" />
+        <Button
+            android:id="@+id/btnOptCamera"
+            android:layout_width="match_parent"
+            android:layout_height="70dp"
+            android:layout_marginBottom="24dp"
+            android:backgroundTint="#4CAF50"
+            android:text="Take Photos (Camera)"
+            android:textColor="#FFFFFF" />
+        <TextView
+            android:id="@+id/tvCancelCreate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CANCEL"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
 
 </RelativeLayout>
