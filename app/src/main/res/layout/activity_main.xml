@@ -20,11 +20,29 @@
                 android:id="@+id/tvToolbarTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
+                android:layout_toStartOf="@id/btnEditFileName"
+                android:layout_alignParentStart="true"
                 android:gravity="center_vertical"
                 android:text="TwinPrint PDF Studio"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btnEditFileName"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:layout_marginEnd="12dp"
+                android:src="@android:drawable/ic_menu_edit"
+                android:scaleType="fitCenter"
+                android:padding="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:visibility="gone"
+                app:tint="#FFFFFF"/>
         </RelativeLayout>
     </androidx.appcompat.widget.Toolbar>
 
@@ -137,18 +155,36 @@
                 android:text="1 / 1" />
         </FrameLayout>
 
-        <Button
-            android:id="@+id/btnMainPrint"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_margin="16dp"
-            android:backgroundTint="#2196F3"
-            android:text="PRINT"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <Button
+                android:id="@+id/btnMainSave"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:backgroundTint="#4CAF50"
+                android:text="SAVE PDF"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnMainPrint"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:backgroundTint="#2196F3"
+                android:text="PRINT"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- 3. MANAGE PAGES UI (Reorder & Save Images) -->
+    <!-- 3. MANAGE PAGES UI (Reorder) -->
     <LinearLayout
         android:id="@+id/viewManageMerge"
         android:layout_width="match_parent"
@@ -157,15 +193,6 @@
         android:orientation="vertical"
         android:background="#FFFFFF"
         android:visibility="gone">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="16dp"
-            android:text="Manage Pages (Drag to Reorder)"
-            android:textStyle="bold"
-            android:textSize="18sp"
-            android:textColor="#000000"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvEditPages"
@@ -181,16 +208,6 @@
             android:orientation="vertical"
             android:padding="8dp"
             android:background="#FFFFFF">
-
-            <Button
-                android:id="@+id/btnSaveImages"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:text="SAVE IMAGES TO PHONE"
-                android:backgroundTint="#4CAF50"
-                android:textColor="#FFFFFF"
-                android:visibility="gone"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
