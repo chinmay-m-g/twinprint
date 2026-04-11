@@ -3,13 +3,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    app:cardCornerRadius="8dp"
+    android:layout_margin="10dp"
+    app:cardCornerRadius="16dp"
     app:cardElevation="4dp"
     app:cardBackgroundColor="#FFFFFF"
-    app:strokeColor="#E0E0E0"
-    app:strokeWidth="1dp"
-    app:cardUseCompatPadding="true">
+    app:strokeWidth="0dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
@@ -19,24 +20,31 @@
             android:id="@+id/ivPage"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:background="#FFFFFF"
+            android:background="#FAFAFA"
             android:scaleType="fitCenter"
             app:layout_constraintDimensionRatio="H,1:1.414"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <View
+            android:id="@+id/divider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#EEEEEE"
+            app:layout_constraintTop_toBottomOf="@id/ivPage" />
+
         <TextView
             android:id="@+id/tvPageNumber"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#F5F5F5"
+            android:background="#FFFFFF"
             android:gravity="center"
-            android:paddingVertical="8dp"
-            android:textColor="#000000"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            app:layout_constraintTop_toBottomOf="@id/ivPage"
+            android:paddingVertical="10dp"
+            android:textColor="#455A64"
+            android:textSize="13sp"
+            android:fontFamily="sans-serif-medium"
+            app:layout_constraintTop_toBottomOf="@id/divider"
             app:layout_constraintBottom_toBottomOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>

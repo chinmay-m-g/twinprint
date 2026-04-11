@@ -1,48 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5">
+    android:background="#F8F9FA">
 
     <!-- Header Toolbar -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="#2196F3"
-        android:elevation="4dp"
+        android:background="#1E88E5"
+        android:elevation="6dp"
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
+
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent">
+
             <TextView
                 android:id="@+id/tvToolbarTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:layout_toStartOf="@id/btnEditFileName"
                 android:layout_alignParentStart="true"
+                android:layout_toStartOf="@id/btnEditFileName"
+                android:ellipsize="end"
                 android:gravity="center_vertical"
+                android:singleLine="true"
                 android:text="TwinPrint PDF Studio"
                 android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:textStyle="bold" />
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-medium" />
 
             <ImageButton
                 android:id="@+id/btnEditFileName"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
                 android:layout_marginEnd="12dp"
-                android:src="@android:drawable/ic_menu_edit"
-                android:scaleType="fitCenter"
-                android:padding="4dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="6dp"
+                android:scaleType="fitCenter"
+                android:src="@android:drawable/ic_menu_edit"
                 android:visibility="gone"
-                app:tint="#FFFFFF"/>
+                app:tint="#FFFFFF" />
         </RelativeLayout>
     </androidx.appcompat.widget.Toolbar>
 
@@ -59,26 +62,31 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_centerInParent="true"
+            android:fontFamily="sans-serif-light"
             android:gravity="center"
-            android:padding="32dp"
-            android:text="Welcome to TwinPrint!\n\nOpen a PDF or create one from images."
-            android:textColor="#9E9E9E"
-            android:textSize="20sp"
+            android:padding="40dp"
+            android:text="Welcome to TwinPrint!\n\nOpen a PDF or create a new one from your images."
+            android:textColor="#B0BEC5"
+            android:textSize="18sp"
             android:visibility="gone" />
 
         <TextView
             android:id="@+id/tvRecentLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="16dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:fontFamily="sans-serif-black"
+            android:letterSpacing="0.1"
             android:text="RECENT PDFs"
-            android:textStyle="bold"
-            android:textColor="#666666"/>
+            android:textColor="#546E7A"
+            android:textSize="14sp" />
 
         <ScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_above="@id/llBottomButtons"
+            android:layout_above="@id/homeBottomContainer"
             android:layout_below="@id/tvRecentLabel">
 
             <LinearLayout
@@ -86,39 +94,57 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="8dp" />
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="4dp" />
         </ScrollView>
 
-        <LinearLayout
-            android:id="@+id/llBottomButtons"
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/homeBottomContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_alignParentBottom="true"
-            android:orientation="horizontal"
-            android:padding="8dp">
+            app:cardCornerRadius="24dp"
+            app:cardElevation="12dp"
+            android:layout_margin="12dp"
+            app:cardBackgroundColor="#FFFFFF">
 
-            <Button
-                android:id="@+id/btnOpenPdf"
-                android:layout_width="0dp"
-                android:layout_height="60dp"
-                android:layout_weight="1"
-                android:layout_margin="8dp"
-                android:backgroundTint="#2196F3"
-                android:text="OPEN PDF"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"/>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="12dp">
 
-            <Button
-                android:id="@+id/btnCreatePdf"
-                android:layout_width="0dp"
-                android:layout_height="60dp"
-                android:layout_weight="1"
-                android:layout_margin="8dp"
-                android:backgroundTint="#4CAF50"
-                android:text="CREATE PDF"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"/>
-        </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOpenPdf"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_margin="6dp"
+                    android:layout_weight="1"
+                    android:text="OPEN PDF"
+                    android:letterSpacing="0.05"
+                    app:cornerRadius="16dp"
+                    app:icon="@android:drawable/ic_menu_upload"
+                    app:iconPadding="8dp"
+                    android:backgroundTint="#1E88E5"
+                    android:textColor="#FFFFFF" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCreatePdf"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_margin="6dp"
+                    android:layout_weight="1"
+                    android:text="CREATE"
+                    android:letterSpacing="0.05"
+                    app:cornerRadius="16dp"
+                    app:icon="@android:drawable/ic_menu_add"
+                    app:iconPadding="8dp"
+                    android:backgroundTint="#43A047"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
     </RelativeLayout>
 
     <!-- 2. PDF VIEWER PAGE -->
@@ -139,49 +165,66 @@
                 android:id="@+id/rvPdfPages"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:scrollbars="vertical"
-                android:background="#808080" />
+                android:background="#263238" />
 
-            <TextView
-                android:id="@+id/tvPageIndicator"
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
-                android:layout_margin="16dp"
-                android:background="#AA000000"
-                android:padding="8dp"
-                android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:text="1 / 1" />
+                android:layout_marginBottom="16dp"
+                app:cardBackgroundColor="#99000000"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp">
+
+                <TextView
+                    android:id="@+id/tvPageIndicator"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="6dp"
+                    android:text="1 / 1"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+            </com.google.android.material.card.MaterialCardView>
         </FrameLayout>
 
-        <LinearLayout
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="16dp">
+            app:cardElevation="8dp"
+            app:cardCornerRadius="0dp">
 
-            <Button
-                android:id="@+id/btnMainSave"
-                android:layout_width="0dp"
-                android:layout_height="60dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:backgroundTint="#4CAF50"
-                android:text="SAVE PDF"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="12dp">
 
-            <Button
-                android:id="@+id/btnMainPrint"
-                android:layout_width="0dp"
-                android:layout_height="60dp"
-                android:layout_weight="1"
-                android:backgroundTint="#2196F3"
-                android:text="PRINT"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-        </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMainSave"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="60dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="SAVE PDF"
+                    app:cornerRadius="16dp"
+                    app:icon="@android:drawable/ic_menu_save"
+                    android:backgroundTint="#43A047" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMainPrint"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="60dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="PRINT"
+                    app:cornerRadius="16dp"
+                    app:icon="@android:drawable/ic_menu_set_as"
+                    android:backgroundTint="#1E88E5" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
     </LinearLayout>
 
     <!-- 3. MANAGE PAGES UI (Reorder) -->
@@ -190,8 +233,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/toolbar"
-        android:orientation="vertical"
         android:background="#FFFFFF"
+        android:orientation="vertical"
         android:visibility="gone">
 
         <androidx.recyclerview.widget.RecyclerView
@@ -199,75 +242,115 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="#FFFFFF"
-            android:padding="8dp"/>
+            android:padding="6dp" />
 
-        <LinearLayout
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="8dp"
-            android:background="#FFFFFF">
+            app:cardElevation="8dp"
+            app:cardCornerRadius="0dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
-                <Button
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnDiscardMerge"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="56dp"
+                    android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:text="CANCEL"
-                    android:backgroundTint="#9E9E9E"
-                    android:layout_marginEnd="8dp"/>
-                <Button
+                    android:textColor="#757575"
+                    app:cornerRadius="16dp"
+                    app:strokeColor="#BDBDBD" />
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnConfirmMerge"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="CONVERT TO PDF"
-                    android:backgroundTint="#2196F3"/>
+                    android:layout_height="56dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1.5"
+                    android:text="GENERATE PDF"
+                    app:cornerRadius="16dp"
+                    app:icon="@android:drawable/ic_menu_directions"
+                    android:backgroundTint="#1E88E5" />
             </LinearLayout>
-        </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
     </LinearLayout>
 
     <!-- 4. PRINT OPTIONS OVERLAY -->
-    <LinearLayout
+    <RelativeLayout
         android:id="@+id/viewPrintOptions"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/toolbar"
-        android:background="#CC000000"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="32dp"
-        android:visibility="gone"
+        android:background="#99000000"
         android:clickable="true"
-        android:focusable="true">
-        <Button
-            android:id="@+id/btnOptSingle"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
-            android:layout_height="70dp"
-            android:layout_marginBottom="16dp"
-            android:backgroundTint="#FFFFFF"
-            android:text="Single Sided Print"
-            android:textColor="#2196F3" />
-        <Button
-            android:id="@+id/btnOptTwoSided"
-            android:layout_width="match_parent"
-            android:layout_height="70dp"
-            android:layout_marginBottom="24dp"
-            android:backgroundTint="#2196F3"
-            android:text="Two Sided Print"
-            android:textColor="#FFFFFF" />
-        <TextView
-            android:id="@+id/tvCancelOptions"
-            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="CANCEL"
-            android:textColor="#FFFFFF" />
-    </LinearLayout>
+            android:layout_centerInParent="true"
+            android:layout_marginHorizontal="32dp"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="24dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="20dp"
+                    android:gravity="center"
+                    android:text="Choose Print Mode"
+                    android:textColor="#1E88E5"
+                    android:textSize="18sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOptSingle"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="12dp"
+                    android:text="Single Sided Print"
+                    android:textSize="15sp"
+                    app:cornerRadius="16dp"
+                    app:strokeColor="#E0E0E0"
+                    app:strokeWidth="1dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOptTwoSided"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="20dp"
+                    android:text="Two Sided Print"
+                    android:textSize="15sp"
+                    app:cornerRadius="16dp"
+                    android:backgroundTint="#1E88E5" />
+
+                <TextView
+                    android:id="@+id/tvCancelOptions"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:padding="12dp"
+                    android:text="CANCEL"
+                    android:textColor="#757575"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </RelativeLayout>
 
     <!-- 5. DUPLEX PAGE -->
     <LinearLayout
@@ -284,82 +367,92 @@
             android:id="@+id/tvDuplexInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="12dp"
             android:gravity="center"
             android:text="Double Sided Printing"
-            android:textColor="#2196F3"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textColor="#1E88E5"
+            android:textSize="18sp"
+            android:fontFamily="sans-serif-medium" />
 
-        <FrameLayout
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvDuplexPreview"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="16dp"
+            android:background="#ECEFF1"
+            android:padding="8dp" />
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvDuplexPreview"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="#F0F0F0" />
-        </FrameLayout>
-
-        <LinearLayout
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/layoutTimer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
-            android:background="#E3F2FD"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:padding="12dp"
-            android:visibility="gone">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="FLIP THE STACK NOW"
-                android:textColor="#1976D2"
-                android:textStyle="bold" />
-            <ProgressBar
-                android:id="@+id/pbTimer"
-                style="?android:attr/progressBarStyleHorizontal"
+            android:visibility="gone"
+            app:cardBackgroundColor="#E3F2FD"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:max="10"
-                android:progress="10" />
-        </LinearLayout>
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="FLIP THE STACK NOW"
+                    android:textColor="#1565C0"
+                    android:fontFamily="sans-serif-black" />
+
+                <ProgressBar
+                    android:id="@+id/pbTimer"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="10"
+                    android:progress="10" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
-            <Button
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnStep1Even"
                 android:layout_width="0dp"
-                android:layout_height="60dp"
+                android:layout_height="64dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:backgroundTint="#FF9800"
-                android:text="STEP 1: Evens"
-                android:textSize="12sp" />
-            <Button
+                android:layout_marginEnd="6dp"
+                android:text="STEP 1: EVENS"
+                app:cornerRadius="16dp"
+                android:backgroundTint="#FF9800" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnStep2Odd"
                 android:layout_width="0dp"
-                android:layout_height="60dp"
+                android:layout_height="64dp"
                 android:layout_weight="1"
-                android:backgroundTint="#4CAF50"
+                android:layout_marginStart="6dp"
                 android:enabled="false"
-                android:text="STEP 2: Odds"
-                android:textSize="12sp" />
+                android:text="STEP 2: ODDS"
+                app:cornerRadius="16dp"
+                android:backgroundTint="#43A047" />
         </LinearLayout>
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBackFromDuplex"
             style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Exit Printing" />
+            android:text="EXIT PRINTING"
+            android:textColor="#757575" />
     </LinearLayout>
 
     <!-- 6. AD OVERLAY -->
@@ -368,9 +461,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#FFFFFF"
-        android:visibility="gone"
         android:clickable="true"
-        android:focusable="true">
+        android:focusable="true"
+        android:visibility="gone">
+
         <TextView
             android:id="@+id/tvAdLabel"
             android:layout_width="wrap_content"
@@ -378,8 +472,10 @@
             android:layout_alignParentTop="true"
             android:layout_centerHorizontal="true"
             android:layout_marginTop="32dp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.2"
             android:text="ADVERTISEMENT"
-            android:textColor="#CCCCCC"
+            android:textColor="#B0BEC5"
             android:textSize="12sp" />
 
         <TextView
@@ -388,68 +484,104 @@
             android:layout_height="wrap_content"
             android:layout_below="@id/tvAdLabel"
             android:layout_centerHorizontal="true"
-            android:layout_marginTop="16dp"
-            android:text="Printing in progress... Please wait."
-            android:textColor="#2196F3"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:text="Printing in progress...\nKeep the app open"
+            android:textColor="#1E88E5"
+            android:textSize="20sp"
+            android:fontFamily="sans-serif-medium" />
 
         <ImageView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_below="@id/tvPrintingStatus"
             android:layout_above="@id/tvAdTimer"
-            android:layout_margin="32dp"
+            android:layout_below="@id/tvPrintingStatus"
+            android:layout_margin="48dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_launcher_background" />
+
         <TextView
             android:id="@+id/tvAdTimer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentBottom="true"
             android:layout_centerHorizontal="true"
-            android:layout_marginBottom="32dp"
+            android:layout_marginBottom="48dp"
             android:text="Closing in 30s..."
-            android:textColor="#2196F3"
+            android:textColor="#1E88E5"
             android:textSize="18sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-black" />
     </RelativeLayout>
 
     <!-- 7. CREATE PDF OPTIONS OVERLAY -->
-    <LinearLayout
+    <RelativeLayout
         android:id="@+id/viewCreateOptions"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/toolbar"
-        android:background="#CC000000"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="32dp"
-        android:visibility="gone"
+        android:background="#99000000"
         android:clickable="true"
-        android:focusable="true">
-        <Button
-            android:id="@+id/btnOptGallery"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
-            android:layout_height="70dp"
-            android:layout_marginBottom="16dp"
-            android:backgroundTint="#FFFFFF"
-            android:text="Upload from Gallery"
-            android:textColor="#4CAF50" />
-        <Button
-            android:id="@+id/btnOptCamera"
-            android:layout_width="match_parent"
-            android:layout_height="70dp"
-            android:layout_marginBottom="24dp"
-            android:backgroundTint="#4CAF50"
-            android:text="Take Photos (Camera)"
-            android:textColor="#FFFFFF" />
-        <TextView
-            android:id="@+id/tvCancelCreate"
-            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="CANCEL"
-            android:textColor="#FFFFFF" />
-    </LinearLayout>
+            android:layout_centerInParent="true"
+            android:layout_marginHorizontal="32dp"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="24dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="24dp"
+                    android:gravity="center"
+                    android:text="Create New PDF"
+                    android:textColor="#43A047"
+                    android:textSize="18sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOptGallery"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="12dp"
+                    android:text="Choose from Gallery"
+                    app:cornerRadius="16dp"
+                    app:icon="@android:drawable/ic_menu_gallery"
+                    app:strokeColor="#E0E0E0"
+                    app:strokeWidth="1dp"
+                    android:textColor="#43A047" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOptCamera"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="20dp"
+                    android:text="Capture with Camera"
+                    app:cornerRadius="16dp"
+                    app:icon="@android:drawable/ic_menu_camera"
+                    android:backgroundTint="#43A047" />
+
+                <TextView
+                    android:id="@+id/tvCancelCreate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:padding="12dp"
+                    android:text="CANCEL"
+                    android:textColor="#757575"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </RelativeLayout>
 
 </RelativeLayout>
