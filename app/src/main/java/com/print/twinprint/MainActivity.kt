@@ -22,6 +22,7 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintManager
 import android.text.InputType
+import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -51,6 +52,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
@@ -115,11 +117,16 @@ class MainActivity : AppCompatActivity() {
     private var isBatchSeparate = false
     private var batchIsDoubleSided = false
 
+    // Rendering optimization
+    private val bitmapCache = LruCache<String, Bitmap>(30)
+    private val renderExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
+
+    private var lastScaleTime = 0L // Add this as a member variable
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         // Initialize PDFBox
         PDFBoxResourceLoader.init(applicationContext)
 
@@ -160,58 +167,113 @@ class MainActivity : AppCompatActivity() {
         setupDragAndDrop(rvPdfPages)
         setupDragAndDrop(rvEditPages)
 
-        // Zoom & Grid Gesture for Viewer
-        viewerScaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(detector: ScaleGestureDetector): Boolean {
-                val scale = detector.scaleFactor
-                if (scale < 0.85f) { // Pinch In -> Zoom Out (More columns)
-                    if (viewerSpanCount < 8) {
-                        viewerSpanCount++
-                        updateSpanCount(rvPdfPages, viewerSpanCount)
-                        return true
-                    }
-                } else if (scale > 1.15f) { // Pinch Out -> Zoom In (Fewer columns)
-                    if (viewerSpanCount > 1) {
-                        viewerSpanCount--
-                        updateSpanCount(rvPdfPages, viewerSpanCount)
-                        return true
-                    }
-                }
-                return false
-            }
-        })
+        viewerScaleDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    val scale = detector.scaleFactor
+                    val currentTime = System.currentTimeMillis()
 
-        // Zoom & Grid Gesture for Edit Pages
-        editScaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(detector: ScaleGestureDetector): Boolean {
-                val scale = detector.scaleFactor
-                if (scale < 0.85f) { // Pinch In -> Icons
-                    if (editSpanCount < 8) {
-                        editSpanCount++
-                        updateSpanCount(rvEditPages, editSpanCount)
-                        return true
+                    // 1. PINCH OUT (Enlarging / Zooming In)
+                    if (scale > 1.02f) {
+                        if (viewerSpanCount > 1 && currentTime - lastScaleTime > 150) {
+                            // If we have multiple columns, reduce columns first
+                            viewerSpanCount--
+                            updateSpanCount(rvPdfPages, viewerSpanCount)
+                            lastScaleTime = currentTime
+                            return true
+                        } else if (viewerSpanCount == 1) {
+                            // If we are already at 1 column, physically enlarge the view
+                            val newScale = (rvPdfPages.scaleX * scale).coerceIn(1.0f, 3.0f)
+                            rvPdfPages.scaleX = newScale
+                            rvPdfPages.scaleY = newScale
+                            return true
+                        }
                     }
-                } else if (scale > 1.15f) { // Pinch Out -> Bigger
-                    if (editSpanCount > 1) {
-                        editSpanCount--
-                        updateSpanCount(rvEditPages, editSpanCount)
-                        return true
+
+                    // 2. PINCH IN (Shrinking / Zooming Out)
+                    else if (scale < 0.98f) {
+                        if (rvPdfPages.scaleX > 1.0f) {
+                            // If the view is enlarged, shrink the view first
+                            val newScale = (rvPdfPages.scaleX * scale).coerceIn(1.0f, 3.0f)
+                            rvPdfPages.scaleX = newScale
+                            rvPdfPages.scaleY = newScale
+                            return true
+                        } else if (viewerSpanCount < 5 && currentTime - lastScaleTime > 150) {
+                            // If the view is normal size, increase columns
+                            viewerSpanCount++
+                            updateSpanCount(rvPdfPages, viewerSpanCount)
+                            lastScaleTime = currentTime
+                            return true
+                        }
                     }
+                    return false
                 }
-                return false
-            }
-        })
+            })
+
+        editScaleDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    val scale = detector.scaleFactor
+                    val currentTime = System.currentTimeMillis()
+
+                    // 1. PINCH OUT (Enlarging / Zooming In)
+                    if (scale > 1.02f) {
+                        if (editSpanCount > 1 && currentTime - lastScaleTime > 150) {
+                            // Reduce columns first
+                            editSpanCount--
+                            updateSpanCount(rvEditPages, editSpanCount)
+                            lastScaleTime = currentTime
+                            return true
+                        } else if (editSpanCount == 1) {
+                            // Physically enlarge the view once at 1 column
+                            val newScale = (rvEditPages.scaleX * scale).coerceIn(1.0f, 3.0f)
+                            rvEditPages.scaleX = newScale
+                            rvEditPages.scaleY = newScale
+                            return true
+                        }
+                    }
+                    // 2. PINCH IN (Shrinking / Zooming Out)
+                    else if (scale < 0.98f) {
+                        if (rvEditPages.scaleX > 1.0f) {
+                            // Shrink the view scale first
+                            val newScale = (rvEditPages.scaleX * scale).coerceIn(1.0f, 3.0f)
+                            rvEditPages.scaleX = newScale
+                            rvEditPages.scaleY = newScale
+                            return true
+                        } else if (editSpanCount < 5 && currentTime - lastScaleTime > 150) {
+                            // Increase columns
+                            editSpanCount++
+                            updateSpanCount(rvEditPages, editSpanCount)
+                            lastScaleTime = currentTime
+                            return true
+                        }
+                    }
+                    return false
+                }
+            })
 
         rvPdfPages.setOnTouchListener { v, event ->
             viewerScaleDetector.onTouchEvent(event)
-            if (event.action == MotionEvent.ACTION_UP) v.performClick()
-            false
+            if (event.pointerCount > 1) {
+                true
+            } else {
+                v.onTouchEvent(event)
+            }
         }
 
         rvEditPages.setOnTouchListener { v, event ->
+            // Pass event to detector
             editScaleDetector.onTouchEvent(event)
-            if (event.action == MotionEvent.ACTION_UP) v.performClick()
-            false
+
+            // Intercept if multi-finger (zooming)
+            if (event.pointerCount > 1) {
+                true
+            } else {
+                // Normal behavior for single finger (scrolling/clicking)
+                v.onTouchEvent(event)
+            }
         }
 
         // Android Back Button Logic
@@ -378,6 +440,8 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        tvPageIndicator.visibility = View.GONE
+
         handleIntent(intent)
         updateRecentFilesList()
         checkPermissions()
@@ -385,7 +449,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupDragAndDrop(rv: RecyclerView) {
         val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
-            ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT, 0) {
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
             
             override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
                 val fromPos = viewHolder.adapterPosition
@@ -413,19 +477,33 @@ class MainActivity : AppCompatActivity() {
                     scaleX = 1.0f
                     scaleY = 1.0f
                 }
-                recyclerView.adapter?.notifyDataSetChanged()
             }
 
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val position = viewHolder.adapterPosition
+                mergedPages.removeAt(position)
+                rv.adapter?.notifyItemRemoved(position)
+                totalPages = mergedPages.size
+                tvPageIndicator.text = "Pages: $totalPages"
+            }
         })
         itemTouchHelper.attachToRecyclerView(rv)
     }
 
-    private fun updateSpanCount(rv: RecyclerView, count: Int) {
-        (rv.layoutManager as? GridLayoutManager)?.spanCount = count
-        rv.adapter?.notifyDataSetChanged()
-    }
+    private fun updateSpanCount(recyclerView: RecyclerView, count: Int) {
+        val layoutManager = recyclerView.layoutManager as? GridLayoutManager
+        if (layoutManager != null && layoutManager.spanCount != count) {
+            layoutManager.spanCount = count
 
+            // Reset physical zoom scales when changing the grid
+            recyclerView.scaleX = 1.0f
+            recyclerView.scaleY = 1.0f
+            recyclerView.translationX = 0f
+            recyclerView.translationY = 0f
+
+            recyclerView.requestLayout()
+        }
+    }
     private fun openCamera() {
         try {
             val photoFile = File.createTempFile("IMG_", ".jpg", getExternalFilesDir(Environment.DIRECTORY_PICTURES))
@@ -450,7 +528,6 @@ class MainActivity : AppCompatActivity() {
         val action = intent.action
         val type = intent.type ?: ""
         
-        // Use a more flexible check for PDF type and handle ACTION_VIEW / ACTION_SEND robustly
         if (Intent.ACTION_VIEW == action) {
             intent.data?.let { uri ->
                 processIncomingUri(uri)
@@ -468,7 +545,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun processIncomingUri(uri: Uri) {
         try {
-            // Ensure we have access to the URI if possible
             try {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             } catch (e: Exception) {}
@@ -487,11 +563,9 @@ class MainActivity : AppCompatActivity() {
     private fun copyToCache(uri: Uri): Uri? {
         return try {
             val originalName = getFileName(uri) ?: "document.pdf"
-            // Use a hash of the URI to ensure a unique filename for each document in cache
             val uniqueName = "${uri.toString().hashCode()}_$originalName"
             val cacheFile = File(cacheDir, uniqueName)
             
-            // If already cached, just return it
             if (cacheFile.exists()) return Uri.fromFile(cacheFile)
 
             contentResolver.openInputStream(uri)?.use { input ->
@@ -523,13 +597,11 @@ class MainActivity : AppCompatActivity() {
         tvToolbarTitle.text = "TwinPrint PDF Studio"
         updateRecentFilesList()
         
-        // Reset span counts
         viewerSpanCount = 1
         editSpanCount = 1
         updateSpanCount(rvPdfPages, 1)
         updateSpanCount(rvEditPages, 1)
         
-        // Ensure keep screen on flag is cleared
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -537,10 +609,7 @@ class MainActivity : AppCompatActivity() {
         viewViewer.visibility = View.GONE
         viewDuplex.visibility = View.VISIBLE
         val duplexInfo = findViewById<TextView>(R.id.tvDuplexInfo)
-        
-        // Setup Preview
         rvDuplexPreview.adapter = DuplexPreviewAdapter(mergedPages)
-        
         duplexInfo.text = "Double Sided Printing"
         btnStep1Even.isEnabled = true
         btnStep2Odd.isEnabled = false
@@ -554,8 +623,6 @@ class MainActivity : AppCompatActivity() {
     private fun showAd(ms: Long, isPrinting: Boolean = false, onFinish: () -> Unit) {
         viewAd.visibility = View.VISIBLE
         tvPrintingStatus.visibility = if (isPrinting) View.VISIBLE else View.GONE
-        
-        // Keep screen on during advertisement
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         object : CountDownTimer(ms, 1000) {
@@ -564,7 +631,6 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onFinish() {
                 viewAd.visibility = View.GONE
-                // Only clear flag if we are not currently in the flip timer phase
                 if (layoutTimer.visibility != View.VISIBLE) {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
@@ -576,8 +642,6 @@ class MainActivity : AppCompatActivity() {
     private fun startFlipTimer() {
         layoutTimer.visibility = View.VISIBLE
         pbTimer.progress = 10
-        
-        // Keep screen on during reversal (flip timer)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         object : CountDownTimer(10000, 1000) {
@@ -587,7 +651,6 @@ class MainActivity : AppCompatActivity() {
             override fun onFinish() {
                 layoutTimer.visibility = View.GONE
                 btnStep2Odd.isEnabled = true
-                // Only clear flag if we are not currently showing an ad
                 if (viewAd.visibility != View.VISIBLE) {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
@@ -603,7 +666,6 @@ class MainActivity : AppCompatActivity() {
                     if (data != null) {
                         val clipData = data.clipData
                         if (clipData != null && clipData.itemCount > 1) {
-                            // Batch/Merge mode
                             batchUris.clear()
                             for (i in 0 until clipData.itemCount) {
                                 val uri = clipData.getItemAt(i).uri
@@ -702,46 +764,18 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Saved $savedCount images to gallery", Toast.LENGTH_SHORT).show()
     }
 
-    private fun convertImagesToPdf(uris: List<Uri>) {
-        val dialog = AlertDialog.Builder(this)
-            .setMessage("Converting images to PDF...")
-            .setCancelable(false)
-            .show()
-
-        Thread {
-            try {
-                val doc = PDDocument()
-                uris.forEach { uri ->
-                    contentResolver.openInputStream(uri)?.use { inputStream ->
-                        val bitmap = BitmapFactory.decodeStream(inputStream)
-                        val page = PDPage(PDRectangle(bitmap.width.toFloat(), bitmap.height.toFloat()))
-                        doc.addPage(page)
-                        val pdImage = LosslessFactory.createFromImage(doc, bitmap)
-                        PDPageContentStream(doc, page).use { contentStream ->
-                            contentStream.drawImage(pdImage, 0f, 0f)
-                        }
-                    }
-                }
-                
-                val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                val fileName = "Images_$timeStamp.pdf"
-                val file = File(cacheDir, fileName)
-                FileOutputStream(file).use { outputStream ->
-                    doc.save(outputStream)
-                }
-                doc.close()
-
-                runOnUiThread {
-                    dialog.dismiss()
-                    openPdf(Uri.fromFile(file))
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    dialog.dismiss()
-                    Toast.makeText(this, "Failed to convert images: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
+    private fun finalizeMerge() {
+        val selected = mergedPages.filter { it.isSelected }
+        if (selected.isEmpty()) {
+            Toast.makeText(this, "No pages selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        mergedPages.clear()
+        mergedPages.addAll(selected)
+        totalPages = mergedPages.size
+        viewManageMerge.visibility = View.GONE
+        displayPdf()
     }
 
     private fun showBatchOptionsDialog() {
@@ -799,6 +833,7 @@ class MainActivity : AppCompatActivity() {
     private fun openPdf(uri: Uri, onOpened: (() -> Unit)? = null) {
         currentPdfUri = uri
         addToRecentFiles(uri)
+        bitmapCache.evictAll()
         
         try {
             val inputStream = contentResolver.openInputStream(uri) ?: return
@@ -873,26 +908,6 @@ class MainActivity : AppCompatActivity() {
         rvEditPages.adapter = PageEditAdapter(mergedPages)
     }
 
-    private fun finalizeMerge() {
-        val selected = mergedPages.filter { it.isSelected }
-        if (selected.isEmpty()) {
-            Toast.makeText(this, "No pages selected", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        // If they are images, convert them to PDF first
-        val imageUris = selected.filter { it.isFromImage }.map { it.uri }
-        if (imageUris.isNotEmpty()) {
-            convertImagesToPdf(imageUris)
-        } else {
-            mergedPages.clear()
-            mergedPages.addAll(selected)
-            totalPages = mergedPages.size
-            viewManageMerge.visibility = View.GONE
-            displayPdf()
-        }
-    }
-
     private fun displayPdf() {
         viewHome.visibility = View.GONE
         viewViewer.visibility = View.VISIBLE
@@ -902,6 +917,7 @@ class MainActivity : AppCompatActivity() {
         viewerSpanCount = 1
         updateSpanCount(rvPdfPages, 1)
         rvPdfPages.adapter = PdfPageAdapter(mergedPages)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun doPrintMerged(jobName: String, pageNumbers: List<Int>, onComplete: ((Boolean) -> Unit)? = null) {
@@ -935,7 +951,6 @@ class MainActivity : AppCompatActivity() {
                         }
                         
                         if (pNum == 0) {
-                            // Add a blank page if indicator is 0
                             outDoc.addPage(PDPage())
                             continue
                         }
@@ -970,12 +985,8 @@ class MainActivity : AppCompatActivity() {
             override fun onFinish() {
                 super.onFinish()
                 val job = printJob
-                // The print dialog is finished. We check if the job was actually started.
-                // We use a small delay because the job state might not be updated immediately.
                 window.decorView.postDelayed({
                     val state = job?.info?.state ?: 0
-                    // Consider it a success if the job is queued, started, blocked or completed.
-                    // If it is 'created', it means the dialog was likely dismissed without starting the print.
                     val success = wroteContent && (
                         state == android.print.PrintJobInfo.STATE_QUEUED ||
                         state == android.print.PrintJobInfo.STATE_STARTED ||
@@ -1015,13 +1026,8 @@ class MainActivity : AppCompatActivity() {
             tvRecentLabel.visibility = View.VISIBLE
         }
 
-        val recentList = recents.toList()
-        val lastFive = if (recentList.size > 5) {
-            recentList.subList(recentList.size - 5, recentList.size)
-        } else {
-            recentList
-        }
-        lastFive.reversed().forEach { uriStr ->
+        val lastFive = recents.toList().reversed().take(5)
+        lastFive.forEach { uriStr ->
             val uri = Uri.parse(uriStr)
             val view = LayoutInflater.from(this).inflate(R.layout.item_recent_pdf, llRecentItems, false)
             val foreground = view.findViewById<View>(R.id.layoutRecentForeground)
@@ -1040,7 +1046,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val dx = event.rawX - startX
-                        if (dx < 0) { // Swipe Left
+                        if (dx < 0) {
                             currentDx = dx
                             v.translationX = dx
                         }
@@ -1104,11 +1110,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Adapters
+    // Optimized Adapter with Async Rendering & Caching
     inner class PdfPageAdapter(private val pages: List<PageItem>) : RecyclerView.Adapter<PdfPageAdapter.ViewHolder>() {
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
             val iv: ImageView = v.findViewById(R.id.ivPage)
-            val tv: TextView = v.findViewById(R.id.tvPageNum)
+            val tv: TextView = v.findViewById(R.id.tvPageNumber)
+            var currentPos: Int = -1
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -1118,36 +1125,46 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = pages[position]
-            holder.tv.text = "Page ${position + 1}"
-            holder.tv.visibility = View.VISIBLE
+            holder.tv.text = "Page ${position + 1} of ${itemCount}"
+            holder.currentPos = position
+            
+            val cacheKey = "${item.uri}_${item.originalPageIndex}_${viewerSpanCount}"
+            val cachedBitmap = bitmapCache.get(cacheKey)
+            
+            if (cachedBitmap != null) {
+                holder.iv.setImageBitmap(cachedBitmap)
+            } else {
+                holder.iv.setImageBitmap(null)
+                renderExecutor.execute {
+                    val bitmap = renderPage(item)
+                    if (bitmap != null) {
+                        bitmapCache.put(cacheKey, bitmap)
+                        if (holder.currentPos == position) {
+                            runOnUiThread { holder.iv.setImageBitmap(bitmap) }
+                        }
+                    }
+                }
+            }
+        }
 
-            try {
-                val inputStream = contentResolver.openInputStream(item.uri) ?: return
+        private fun renderPage(item: PageItem): Bitmap? {
+            return try {
+                val inputStream = contentResolver.openInputStream(item.uri) ?: return null
                 val bytes = inputStream.readBytes()
                 inputStream.close()
-                if (item.isEncrypted) {
-                    val doc = if (item.password != null) PDDocument.load(bytes, item.password)
-                              else PDDocument.load(bytes)
+                if (item.isEncrypted || item.isFromImage.not()) {
+                    val doc = if (item.isEncrypted) PDDocument.load(bytes, item.password) else PDDocument.load(bytes)
                     val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
-                    val bitmap = renderer.renderImage(item.originalPageIndex, 1.5f)
-                    holder.iv.setImageBitmap(bitmap)
+                    // Adjust scale based on span count for better performance
+                    val scale = if (viewerSpanCount == 1) 1.5f else 0.8f
+                    val bitmap = renderer.renderImage(item.originalPageIndex, scale)
                     doc.close()
-                } else if (item.isFromImage) {
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    holder.iv.setImageBitmap(bitmap)
+                    bitmap
                 } else {
-                    val fd = contentResolver.openFileDescriptor(item.uri, "r") ?: return
-                    val renderer = PdfRenderer(fd)
-                    val page = renderer.openPage(item.originalPageIndex)
-                    val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
-                    bitmap.eraseColor(android.graphics.Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    holder.iv.setImageBitmap(bitmap)
-                    page.close()
-                    renderer.close()
-                    fd.close()
+                    val options = BitmapFactory.Options().apply { inSampleSize = if (viewerSpanCount > 2) 4 else 1 }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) { null }
         }
 
         override fun getItemCount() = pages.size
@@ -1169,36 +1186,26 @@ class MainActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
             holder.cb.isChecked = item.isSelected
-            holder.tvInfo.text = "Page ${position + 1}"
+            holder.tvInfo.text = "Page ${position + 1} of ${itemCount}"
             
-            try {
-                val inputStream = contentResolver.openInputStream(item.uri) ?: return
-                val bytes = inputStream.readBytes()
-                inputStream.close()
-                if (item.isEncrypted) {
-                    val doc = if (item.password != null) PDDocument.load(bytes, item.password)
-                              else PDDocument.load(bytes)
-                    val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
-                    val bitmap = renderer.renderImage(item.originalPageIndex, 0.25f)
-                    holder.iv.setImageBitmap(bitmap)
-                    doc.close()
-                } else if (item.isFromImage) {
-                    val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                    holder.iv.setImageBitmap(bitmap)
-                } else {
-                    val fd = contentResolver.openFileDescriptor(item.uri, "r") ?: return
-                    val renderer = PdfRenderer(fd)
-                    val page = renderer.openPage(item.originalPageIndex)
-                    val bitmap = Bitmap.createBitmap(page.width / 4, page.height / 4, Bitmap.Config.ARGB_8888)
-                    bitmap.eraseColor(android.graphics.Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    holder.iv.setImageBitmap(bitmap)
-                    page.close()
-                    renderer.close()
-                    fd.close()
-                }
-            } catch (e: Exception) {}
+            renderExecutor.execute {
+                val bitmap = try {
+                    val inputStream = contentResolver.openInputStream(item.uri) ?: return@execute
+                    val bytes = inputStream.readBytes()
+                    inputStream.close()
+                    if (item.isEncrypted || item.isFromImage.not()) {
+                        val doc = if (item.isEncrypted) PDDocument.load(bytes, item.password) else PDDocument.load(bytes)
+                        val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
+                        val b = renderer.renderImage(item.originalPageIndex, 0.3f)
+                        doc.close()
+                        b
+                    } else {
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 8 })
+                    }
+                } catch (e: Exception) { null }
+                
+                if (bitmap != null) runOnUiThread { holder.iv.setImageBitmap(bitmap) }
+            }
 
             holder.card.setOnClickListener {
                 item.isSelected = !item.isSelected
@@ -1223,33 +1230,23 @@ class MainActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
             holder.tvInfo.text = "Page ${position + 1}"
-            try {
-                val inputStream = contentResolver.openInputStream(item.uri) ?: return
-                val bytes = inputStream.readBytes()
-                inputStream.close()
-                if (item.isEncrypted) {
-                    val doc = if (item.password != null) PDDocument.load(bytes, item.password)
-                              else PDDocument.load(bytes)
-                    val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
-                    val bitmap = renderer.renderImage(item.originalPageIndex, 1.0f) // Higher quality for preview
-                    holder.iv.setImageBitmap(bitmap)
-                    doc.close()
-                } else if (item.isFromImage) {
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    holder.iv.setImageBitmap(bitmap)
-                } else {
-                    val fd = contentResolver.openFileDescriptor(item.uri, "r") ?: return
-                    val renderer = PdfRenderer(fd)
-                    val page = renderer.openPage(item.originalPageIndex)
-                    val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
-                    bitmap.eraseColor(android.graphics.Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    holder.iv.setImageBitmap(bitmap)
-                    page.close()
-                    renderer.close()
-                    fd.close()
-                }
-            } catch (e: Exception) {}
+            renderExecutor.execute {
+                val bitmap = try {
+                    val inputStream = contentResolver.openInputStream(item.uri) ?: return@execute
+                    val bytes = inputStream.readBytes()
+                    inputStream.close()
+                    if (item.isEncrypted || item.isFromImage.not()) {
+                        val doc = if (item.isEncrypted) PDDocument.load(bytes, item.password) else PDDocument.load(bytes)
+                        val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
+                        val b = renderer.renderImage(item.originalPageIndex, 0.5f)
+                        doc.close()
+                        b
+                    } else {
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+                    }
+                } catch (e: Exception) { null }
+                if (bitmap != null) runOnUiThread { holder.iv.setImageBitmap(bitmap) }
+            }
         }
 
         override fun getItemCount() = items.size
