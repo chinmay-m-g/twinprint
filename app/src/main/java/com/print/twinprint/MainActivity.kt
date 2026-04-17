@@ -8,6 +8,9 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -46,6 +49,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.rendering.ImageType
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -110,12 +114,17 @@ class MainActivity : AppCompatActivity() {
     // Zoom and Grid state
     private var viewerSpanCount = 1
     private var editSpanCount = 1
-    private lateinit var viewerScaleDetector: ScaleGestureDetector
-    private lateinit var editScaleDetector: ScaleGestureDetector
+    private var viewerScaleDetector: ScaleGestureDetector? = null
+    private var editScaleDetector: ScaleGestureDetector? = null
+
+    // Native PDF Renderer cache
+    private var nativeRenderer: PdfRenderer? = null
+    private var nativePfd: ParcelFileDescriptor? = null
+    private var currentRendererUri: Uri? = null
 
     // Rendering optimization
-    private val bitmapCache = LruCache<String, Bitmap>(50)
-    private val renderExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
+    private val bitmapCache = LruCache<String, Bitmap>(40)
+    private val renderExecutor = Executors.newFixedThreadPool(4)
 
     private var lastScaleTime = 0L
 
@@ -164,85 +173,7 @@ class MainActivity : AppCompatActivity() {
         setupDragAndDrop(rvPdfPages)
         setupDragAndDrop(rvEditPages)
 
-        viewerScaleDetector = ScaleGestureDetector(
-            this,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    val scale = detector.scaleFactor
-                    val currentTime = System.currentTimeMillis()
-                    if (scale > 1.02f) {
-                        if (viewerSpanCount > 1 && currentTime - lastScaleTime > 150) {
-                            viewerSpanCount--
-                            updateSpanCount(rvPdfPages, viewerSpanCount)
-                            lastScaleTime = currentTime
-                            return true
-                        } else if (viewerSpanCount == 1) {
-                            val newScale = (rvPdfPages.scaleX * scale).coerceIn(1.0f, 3.0f)
-                            rvPdfPages.scaleX = newScale
-                            rvPdfPages.scaleY = newScale
-                            return true
-                        }
-                    } else if (scale < 0.98f) {
-                        if (rvPdfPages.scaleX > 1.0f) {
-                            val newScale = (rvPdfPages.scaleX * scale).coerceIn(1.0f, 3.0f)
-                            rvPdfPages.scaleX = newScale
-                            rvPdfPages.scaleY = newScale
-                            return true
-                        } else if (viewerSpanCount < 5 && currentTime - lastScaleTime > 150) {
-                            viewerSpanCount++
-                            updateSpanCount(rvPdfPages, viewerSpanCount)
-                            lastScaleTime = currentTime
-                            return true
-                        }
-                    }
-                    return false
-                }
-            })
-
-        editScaleDetector = ScaleGestureDetector(
-            this,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    val scale = detector.scaleFactor
-                    val currentTime = System.currentTimeMillis()
-                    if (scale > 1.02f) {
-                        if (editSpanCount > 1 && currentTime - lastScaleTime > 150) {
-                            editSpanCount--
-                            updateSpanCount(rvEditPages, editSpanCount)
-                            lastScaleTime = currentTime
-                            return true
-                        } else if (editSpanCount == 1) {
-                            val newScale = (rvEditPages.scaleX * scale).coerceIn(1.0f, 3.0f)
-                            rvEditPages.scaleX = newScale
-                            rvEditPages.scaleY = newScale
-                            return true
-                        }
-                    } else if (scale < 0.98f) {
-                        if (rvEditPages.scaleX > 1.0f) {
-                            val newScale = (rvEditPages.scaleX * scale).coerceIn(1.0f, 3.0f)
-                            rvEditPages.scaleX = newScale
-                            rvEditPages.scaleY = newScale
-                            return true
-                        } else if (editSpanCount < 5 && currentTime - lastScaleTime > 150) {
-                            editSpanCount++
-                            updateSpanCount(rvEditPages, editSpanCount)
-                            lastScaleTime = currentTime
-                            return true
-                        }
-                    }
-                    return false
-                }
-            })
-
-        rvPdfPages.setOnTouchListener { v, event ->
-            viewerScaleDetector.onTouchEvent(event)
-            if (event.pointerCount > 1) true else v.onTouchEvent(event)
-        }
-
-        rvEditPages.setOnTouchListener { v, event ->
-            editScaleDetector.onTouchEvent(event)
-            if (event.pointerCount > 1) true else v.onTouchEvent(event)
-        }
+        setupZoomSystem()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -392,6 +323,80 @@ class MainActivity : AppCompatActivity() {
         checkPermissions()
     }
 
+    private fun setupZoomSystem() {
+        viewerScaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val scale = detector.scaleFactor
+                val currentTime = System.currentTimeMillis()
+                if (scale > 1.05f) {
+                    if (viewerSpanCount > 1 && currentTime - lastScaleTime > 150) {
+                        viewerSpanCount--
+                        updateSpanCount(rvPdfPages, viewerSpanCount)
+                        lastScaleTime = currentTime
+                        return true
+                    } else if (viewerSpanCount == 1) {
+                        rvPdfPages.scaleX = (rvPdfPages.scaleX * scale).coerceIn(1.0f, 4.0f)
+                        rvPdfPages.scaleY = (rvPdfPages.scaleY * scale).coerceIn(1.0f, 4.0f)
+                        return true
+                    }
+                } else if (scale < 0.95f) {
+                    if (rvPdfPages.scaleX > 1.0f) {
+                        rvPdfPages.scaleX = (rvPdfPages.scaleX * scale).coerceIn(1.0f, 4.0f)
+                        rvPdfPages.scaleY = (rvPdfPages.scaleY * scale).coerceIn(1.0f, 4.0f)
+                        return true
+                    } else if (viewerSpanCount < 5 && currentTime - lastScaleTime > 150) {
+                        viewerSpanCount++
+                        updateSpanCount(rvPdfPages, viewerSpanCount)
+                        lastScaleTime = currentTime
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        editScaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val scale = detector.scaleFactor
+                val currentTime = System.currentTimeMillis()
+                if (scale > 1.05f) {
+                    if (editSpanCount > 1 && currentTime - lastScaleTime > 150) {
+                        editSpanCount--
+                        updateSpanCount(rvEditPages, editSpanCount)
+                        lastScaleTime = currentTime
+                        return true
+                    } else if (editSpanCount == 1) {
+                        rvEditPages.scaleX = (rvEditPages.scaleX * scale).coerceIn(1.0f, 4.0f)
+                        rvEditPages.scaleY = (rvEditPages.scaleY * scale).coerceIn(1.0f, 4.0f)
+                        return true
+                    }
+                } else if (scale < 0.95f) {
+                    if (rvEditPages.scaleX > 1.0f) {
+                        rvEditPages.scaleX = (rvEditPages.scaleX * scale).coerceIn(1.0f, 4.0f)
+                        rvEditPages.scaleY = (rvEditPages.scaleY * scale).coerceIn(1.0f, 4.0f)
+                        return true
+                    } else if (editSpanCount < 5 && currentTime - lastScaleTime > 150) {
+                        editSpanCount++
+                        updateSpanCount(rvEditPages, editSpanCount)
+                        lastScaleTime = currentTime
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        rvPdfPages.setOnTouchListener { v, event ->
+            viewerScaleDetector?.onTouchEvent(event)
+            if (event.pointerCount > 1) true else v.onTouchEvent(event)
+        }
+
+        rvEditPages.setOnTouchListener { v, event ->
+            editScaleDetector?.onTouchEvent(event)
+            if (event.pointerCount > 1) true else v.onTouchEvent(event)
+        }
+    }
+
     private fun generateDefaultFileName(): String {
         val timeStamp = SimpleDateFormat("dd MM yy HH:mm:ss:SSS", Locale.getDefault()).format(Date())
         return "TwinPrint $timeStamp.pdf"
@@ -465,10 +470,7 @@ class MainActivity : AppCompatActivity() {
         val layoutManager = recyclerView.layoutManager as? GridLayoutManager
         if (layoutManager != null && layoutManager.spanCount != count) {
             layoutManager.spanCount = count
-            recyclerView.scaleX = 1.0f
-            recyclerView.scaleY = 1.0f
-            recyclerView.translationX = 0f
-            recyclerView.translationY = 0f
+            recyclerView.animate().scaleX(1.0f).scaleY(1.0f).setDuration(200).start()
             recyclerView.requestLayout()
         }
     }
@@ -547,6 +549,8 @@ class MainActivity : AppCompatActivity() {
         updateSpanCount(rvPdfPages, 1)
         updateSpanCount(rvEditPages, 1)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        closeNativeRenderer()
     }
 
     private fun setupDuplexUI() {
@@ -717,6 +721,28 @@ class MainActivity : AppCompatActivity() {
         currentPdfUri = uri
         addToRecentFiles(uri)
         bitmapCache.evictAll()
+        
+        closeNativeRenderer()
+        
+        try {
+            nativePfd = contentResolver.openFileDescriptor(uri, "r")
+            if (nativePfd != null) {
+                nativeRenderer = PdfRenderer(nativePfd!!)
+                totalPages = nativeRenderer!!.pageCount
+                currentRendererUri = uri
+                
+                mergedPages.clear()
+                for (i in 0 until totalPages) mergedPages.add(PageItem(uri, i, true))
+                displayPdf()
+                onOpened?.invoke()
+            }
+        } catch (e: Exception) {
+            // If native renderer fails (e.g., password protected), fallback to PDFBox
+            openPdfWithPdfBox(uri, onOpened)
+        }
+    }
+
+    private fun openPdfWithPdfBox(uri: Uri, onOpened: (() -> Unit)? = null) {
         try {
             val inputStream = contentResolver.openInputStream(uri) ?: return
             val bytes = inputStream.readBytes()
@@ -733,6 +759,16 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "Error opening PDF: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun closeNativeRenderer() {
+        try {
+            nativeRenderer?.close()
+            nativePfd?.close()
+        } catch (e: Exception) {}
+        nativeRenderer = null
+        nativePfd = null
+        currentRendererUri = null
     }
 
     private fun showPasswordDialog(uri: Uri, onOpened: (() -> Unit)? = null) {
@@ -794,6 +830,7 @@ class MainActivity : AppCompatActivity() {
         tvToolbarTitle.text = getFileName(currentPdfUri) ?: "PDF Viewer"
         tvPageIndicator.text = "1 / $totalPages"
         btnEditFileName.visibility = View.GONE
+        btnMainSave.visibility = View.GONE
         viewerSpanCount = 1
         updateSpanCount(rvPdfPages, 1)
         rvPdfPages.adapter = PdfPageAdapter(mergedPages)
@@ -996,6 +1033,11 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == CAMERA_PERMISSION_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) openCamera()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        closeNativeRenderer()
+    }
+
     inner class PdfPageAdapter(private val pages: List<PageItem>) : RecyclerView.Adapter<PdfPageAdapter.ViewHolder>() {
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
             val iv: ImageView = v.findViewById(R.id.ivPage)
@@ -1037,19 +1079,43 @@ class MainActivity : AppCompatActivity() {
         }
         private fun renderPage(item: PageItem): Bitmap? {
             return try {
-                val inputStream = contentResolver.openInputStream(item.uri) ?: return null
-                val bytes = inputStream.readBytes()
-                inputStream.close()
-                if (item.isEncrypted || item.isFromImage.not()) {
-                    val doc = if (item.isEncrypted) PDDocument.load(bytes, item.password) else PDDocument.load(bytes)
-                    val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
-                    val scale = if (viewerSpanCount == 1) 3.0f else 2.0f
-                    val bitmap = renderer.renderImage(item.originalPageIndex, scale)
-                    doc.close()
-                    bitmap
-                } else {
+                if (item.isFromImage) {
+                    val inputStream = contentResolver.openInputStream(item.uri) ?: return null
+                    val bytes = inputStream.readBytes()
+                    inputStream.close()
                     val options = BitmapFactory.Options().apply { inSampleSize = if (viewerSpanCount > 2) 2 else 1 }
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                } else if (nativeRenderer != null && item.uri == currentRendererUri && !item.isEncrypted) {
+                    // Use native renderer for accurate display
+                    synchronized(nativeRenderer!!) {
+                        val page = nativeRenderer!!.openPage(item.originalPageIndex)
+                        val scale = if (viewerSpanCount == 1) 2.0f else 1.2f
+                        val width = (page.width * scale).toInt()
+                        val height = (page.height * scale).toInt()
+                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bitmap)
+                        canvas.drawColor(Color.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+                        bitmap
+                    }
+                } else {
+                    // Fallback to PDFBox for encrypted or if native fails
+                    val inputStream = contentResolver.openInputStream(item.uri) ?: return null
+                    val bytes = inputStream.readBytes()
+                    inputStream.close()
+                    val doc = if (item.isEncrypted) PDDocument.load(bytes, item.password) else PDDocument.load(bytes)
+                    val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
+                    val scale = if (viewerSpanCount == 1) 2.0f else 1.5f
+                    // Composite on white background manually to fix black patches in PDFBox
+                    val bim = renderer.renderImage(item.originalPageIndex, scale, ImageType.ARGB)
+                    val whiteBitmap = Bitmap.createBitmap(bim.width, bim.height, Bitmap.Config.RGB_565)
+                    val canvas = Canvas(whiteBitmap)
+                    canvas.drawColor(Color.WHITE)
+                    canvas.drawBitmap(bim, 0f, 0f, null)
+                    bim.recycle()
+                    doc.close()
+                    whiteBitmap
                 }
             } catch (e: Exception) { null }
         }
@@ -1081,10 +1147,15 @@ class MainActivity : AppCompatActivity() {
                     if (item.isEncrypted || item.isFromImage.not()) {
                         val doc = if (item.isEncrypted) PDDocument.load(bytes, item.password) else PDDocument.load(bytes)
                         val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
-                        val scale = if (editSpanCount == 1) 2.5f else 1.5f
-                        val b = renderer.renderImage(item.originalPageIndex, scale)
+                        val scale = if (editSpanCount == 1) 1.5f else 1.0f
+                        val bim = renderer.renderImage(item.originalPageIndex, scale, ImageType.ARGB)
+                        val whiteBitmap = Bitmap.createBitmap(bim.width, bim.height, Bitmap.Config.RGB_565)
+                        val canvas = Canvas(whiteBitmap)
+                        canvas.drawColor(Color.WHITE)
+                        canvas.drawBitmap(bim, 0f, 0f, null)
+                        bim.recycle()
                         doc.close()
-                        b
+                        whiteBitmap
                     } else {
                         val sampleSize = if (editSpanCount == 1) 1 else 2
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sampleSize })
@@ -1135,9 +1206,14 @@ class MainActivity : AppCompatActivity() {
                     if (item.isEncrypted || item.isFromImage.not()) {
                         val doc = if (item.isEncrypted) PDDocument.load(bytes, item.password) else PDDocument.load(bytes)
                         val renderer = com.tom_roush.pdfbox.rendering.PDFRenderer(doc)
-                        val b = renderer.renderImage(item.originalPageIndex, 2.0f)
+                        val bim = renderer.renderImage(item.originalPageIndex, 1.0f, ImageType.ARGB)
+                        val whiteBitmap = Bitmap.createBitmap(bim.width, bim.height, Bitmap.Config.RGB_565)
+                        val canvas = Canvas(whiteBitmap)
+                        canvas.drawColor(Color.WHITE)
+                        canvas.drawBitmap(bim, 0f, 0f, null)
+                        bim.recycle()
                         doc.close()
-                        b
+                        whiteBitmap
                     } else {
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 1 })
                     }
