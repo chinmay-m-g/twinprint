@@ -16,12 +16,23 @@
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent">
+
+            <ImageButton
+                android:id="@+id/btnBack"
+                android:layout_width="48dp"
+                android:layout_height="match_parent"
+                android:layout_alignParentStart="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_revert"
+                app:tint="#FFFFFF"
+                android:visibility="gone"/>
+
             <TextView
                 android:id="@+id/tvToolbarTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
+                android:layout_toEndOf="@id/btnBack"
                 android:layout_toStartOf="@id/btnEditFileName"
-                android:layout_alignParentStart="true"
                 android:gravity="center_vertical"
                 android:text="TwinPrint PDF Studio"
                 android:textColor="#FFFFFF"
@@ -148,11 +159,12 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
                 android:layout_margin="16dp"
-                android:background="#AA000000"
+                android:background="#E0E0E0"
                 android:padding="8dp"
-                android:textColor="#FFFFFF"
+                android:textColor="#000000"
                 android:textSize="12sp"
-                android:text="1 / 1" />
+                android:text="1 / 1"
+                android:textStyle="bold" />
         </FrameLayout>
 
         <LinearLayout

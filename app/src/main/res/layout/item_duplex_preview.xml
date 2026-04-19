@@ -5,7 +5,11 @@
     android:layout_height="match_parent"
     android:layout_margin="8dp"
     app:cardCornerRadius="8dp"
-    app:cardElevation="4dp">
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="#FFFFFF"
+    app:strokeColor="#E0E0E0"
+    app:strokeWidth="1dp"
+    app:cardUseCompatPadding="true">
 
     <LinearLayout
         android:layout_width="wrap_content"
@@ -29,7 +33,8 @@
             android:padding="8dp"
             android:text="Page 1"
             android:textStyle="bold"
-            android:textColor="#333333"
-            android:textSize="14sp" />
+            android:textColor="#000000"
+            android:textSize="14sp"
+            android:background="#F5F5F5" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

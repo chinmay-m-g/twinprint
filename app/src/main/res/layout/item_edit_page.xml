@@ -54,7 +54,7 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <TextView
-            android:id="@+id/tvPageInfo"
+            android:id="@+id/tvPageNumber"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
